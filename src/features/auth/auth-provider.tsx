@@ -50,10 +50,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const firebase = getFirebaseClient();
-    if (!firebase) {
-      setLoading(false);
-      return;
-    }
+    if (!firebase) return;
 
     let unsubscribeProfile: (() => void) | undefined;
     const unsubscribeAuth = onAuthStateChanged(firebase.auth, async (nextUser) => {

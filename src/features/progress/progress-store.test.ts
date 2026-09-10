@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { markLessonCompleted, readCompletedLessonIds } from "./progress-store";
+import {
+  markLessonCompleted,
+  parseCompletedLessonIds,
+  readCompletedLessonIds,
+} from "./progress-store";
 
 describe("progress-store", () => {
   beforeEach(() => localStorage.clear());
@@ -13,5 +17,11 @@ describe("progress-store", () => {
     markLessonCompleted(localStorage, "html-document-structure");
 
     expect(readCompletedLessonIds(localStorage)).toEqual(["html-document-structure"]);
+  });
+
+  it("parses only string lesson ids from a stored snapshot", () => {
+    expect(parseCompletedLessonIds('{"completedLessonIds":["lesson-1",42,null]}')).toEqual([
+      "lesson-1",
+    ]);
   });
 });

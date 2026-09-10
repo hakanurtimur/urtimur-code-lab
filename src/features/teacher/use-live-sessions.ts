@@ -7,9 +7,18 @@ import { getFirebaseClient } from "@/lib/firebase/client";
 import type { LiveSessionRecord, LiveSessionStatus } from "./types";
 
 const statuses: LiveSessionStatus[] = ["coding", "testing", "active", "idle"];
+const previewPresets = ["fit", "desktop", "tablet", "mobile"] as const;
+const activePanes = ["mission", "code", "result"] as const;
 
-function parseSession(id: string, data: Record<string, unknown>): LiveSessionRecord {
+type LiveSessionsState = {
+  teacherUid: string;
+  sessions: Record<string, LiveSessionRecord>;
+  error: string;
+};
+
+export function parseSession(id: string, data: Record<string, unknown>): LiveSessionRecord {
   const updatedAt = data.updatedAt instanceof Timestamp ? data.updatedAt.toMillis() : null;
+  const previewUpdatedAt = data.previewUpdatedAt instanceof Timestamp ? data.previewUpdatedAt.toMillis() : null;
   const status = typeof data.status === "string" && statuses.includes(data.status as LiveSessionStatus)
     ? (data.status as LiveSessionStatus)
     : "idle";
@@ -24,40 +33,50 @@ function parseSession(id: string, data: Record<string, unknown>): LiveSessionRec
     totalTests: typeof data.totalTests === "number" ? data.totalTests : 0,
     status,
     lastAction: typeof data.lastAction === "string" ? data.lastAction : "",
+    activePane: typeof data.activePane === "string" && activePanes.includes(data.activePane as (typeof activePanes)[number])
+      ? (data.activePane as LiveSessionRecord["activePane"])
+      : "code",
+    previewPreset: typeof data.previewPreset === "string" && previewPresets.includes(data.previewPreset as (typeof previewPresets)[number])
+      ? (data.previewPreset as LiveSessionRecord["previewPreset"])
+      : "fit",
+    previewScrollY: typeof data.previewScrollY === "number" && Number.isFinite(data.previewScrollY) && data.previewScrollY >= 0
+      ? Math.round(data.previewScrollY)
+      : 0,
+    previewUpdatedAtMs: previewUpdatedAt,
     updatedAtMs: updatedAt,
   };
 }
 
 export function useLiveSessions() {
   const { role, user } = useAuthSession();
-  const [sessions, setSessions] = useState<Record<string, LiveSessionRecord>>({});
-  const [error, setError] = useState("");
+  const [state, setState] = useState<LiveSessionsState | null>(null);
+  const teacherMode = role === "teacher" && Boolean(user);
 
   useEffect(() => {
-    if (role !== "teacher" || !user) {
-      setSessions({});
-      setError("");
-      return;
-    }
+    if (!teacherMode || !user) return;
     const firebase = getFirebaseClient();
     if (!firebase) return;
 
     return onSnapshot(
       collection(firebase.db, "liveSessions"),
       (snapshot) => {
-        const next: Record<string, LiveSessionRecord> = {};
+        const sessions: Record<string, LiveSessionRecord> = {};
         snapshot.docs.forEach((document) => {
-          next[document.id] = parseSession(document.id, document.data());
+          sessions[document.id] = parseSession(document.id, document.data());
         });
-        setSessions(next);
-        setError("");
+        setState({ teacherUid: user.uid, sessions, error: "" });
       },
-      () => {
-        setSessions({});
-        setError("Canlı oturum verisi okunamıyor. Firestore kurallarını kontrol et.");
-      },
+      () => setState({
+        teacherUid: user.uid,
+        sessions: {},
+        error: "Canlı oturum verisi okunamıyor. Firestore kurallarını kontrol et.",
+      }),
     );
-  }, [role, user]);
+  }, [teacherMode, user]);
 
-  return { sessions, error };
+  if (!teacherMode || !user || state?.teacherUid !== user.uid) {
+    return { sessions: {}, error: "" };
+  }
+
+  return { sessions: state.sessions, error: state.error };
 }

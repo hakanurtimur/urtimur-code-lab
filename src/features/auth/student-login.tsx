@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -181,7 +182,7 @@ export function StudentLogin() {
           </div>
         </div>
 
-        <a className="teacher-entry-link" href="/teacher/login">Öğretmen paneline geç</a>
+        <Link className="teacher-entry-link" href="/teacher/login">Öğretmen paneline geç</Link>
       </section>
     </main>
   );

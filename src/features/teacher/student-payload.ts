@@ -3,6 +3,7 @@ import {
   validateStudentPassword,
   validateStudentUsername,
 } from "@/features/auth/student-identity";
+import { getTotalCurriculumWeeks } from "@/features/curriculum/get-lesson";
 
 export type CreateStudentPayload = {
   name: string;
@@ -15,6 +16,7 @@ export type UpdateStudentPayload = {
   username?: string;
   password?: string;
   active?: boolean;
+  maxUnlockedWeekOrder?: number;
 };
 
 export function parseCreateStudentPayload(value: unknown): CreateStudentPayload {
@@ -57,6 +59,20 @@ export function parseUpdateStudentPayload(value: unknown): UpdateStudentPayload 
   if ("active" in input) {
     if (typeof input.active !== "boolean") throw new Error("Aktiflik değeri geçersiz.");
     result.active = input.active;
+  }
+
+  if ("maxUnlockedWeekOrder" in input) {
+    const totalWeeks = getTotalCurriculumWeeks();
+    const weekOrder = input.maxUnlockedWeekOrder;
+    if (
+      typeof weekOrder !== "number" ||
+      !Number.isInteger(weekOrder) ||
+      weekOrder < 1 ||
+      weekOrder > totalWeeks
+    ) {
+      throw new Error(`Açık hafta 1–${totalWeeks} arasında olmalı.`);
+    }
+    result.maxUnlockedWeekOrder = weekOrder;
   }
 
   return result;

@@ -17,7 +17,7 @@ export default async function LessonPage({ params }: LessonPageProps) {
 
   return (
     <StudentGate>
-      <LessonWorkspace lesson={lesson} week={week} />
+      <LessonWorkspace key={lesson.id} lesson={lesson} week={week} />
     </StudentGate>
   );
 }

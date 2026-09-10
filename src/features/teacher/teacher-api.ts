@@ -34,7 +34,7 @@ export function createStudent(input: { name: string; username: string; password:
 
 export function updateStudent(
   uid: string,
-  input: { name?: string; username?: string; password?: string; active?: boolean },
+  input: { name?: string; username?: string; password?: string; active?: boolean; maxUnlockedWeekOrder?: number },
 ) {
   return teacherFetch<{ ok: true }>(`/api/teacher/students/${uid}`, {
     method: "PATCH",

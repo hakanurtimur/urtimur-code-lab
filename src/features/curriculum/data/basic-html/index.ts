@@ -24,13 +24,6 @@ const attribute = (
   value: string,
 ): LessonTest => ({ id, label, kind: "attribute", selector: css, attribute: name, value });
 
-const includes = (id: string, label: string, value: string): LessonTest => ({
-  id,
-  label,
-  kind: "source-includes",
-  value,
-});
-
 const doctype = (id = "doctype", label = "DOCTYPE tanımlı"): LessonTest => ({
   id,
   label,

@@ -17,4 +17,19 @@ describe("student payload validation", () => {
   it("allows a partial update without forcing a password change", () => {
     expect(parseUpdateStudentPayload({ active: false, password: "" })).toEqual({ active: false });
   });
+
+  it("accepts a teacher-controlled unlocked week within curriculum bounds", () => {
+    expect(parseUpdateStudentPayload({ maxUnlockedWeekOrder: 4 })).toEqual({
+      maxUnlockedWeekOrder: 4,
+    });
+  });
+
+  it("rejects unlocked week values outside curriculum bounds", () => {
+    expect(() => parseUpdateStudentPayload({ maxUnlockedWeekOrder: 0 })).toThrow(
+      "Açık hafta 1–8 arasında olmalı.",
+    );
+    expect(() => parseUpdateStudentPayload({ maxUnlockedWeekOrder: 9 })).toThrow(
+      "Açık hafta 1–8 arasında olmalı.",
+    );
+  });
 });

@@ -4,9 +4,11 @@ import { doc, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
 import { useCallback, useEffect, useRef } from "react";
 import { useAuthSession } from "@/features/auth/auth-provider";
 import type { CurriculumWeek, Lesson } from "@/features/curriculum/types";
+import type { LiveActivePane, PreviewPreset } from "./types";
 import { getFirebaseClient } from "@/lib/firebase/client";
 
 const CODE_SYNC_DELAY = 750;
+const PREVIEW_SCROLL_SYNC_DELAY = 260;
 const HEARTBEAT_DELAY = 20_000;
 
 type TestSummary = { passed: boolean }[];
@@ -17,16 +19,56 @@ type LiveSyncInput = {
   taskId: string;
   source: string;
   results: TestSummary;
+  activePane: LiveActivePane;
+  previewPreset: PreviewPreset;
+  previewScrollY: number;
+  enabled?: boolean;
 };
 
-export function useLiveSessionSync({ lesson, week, taskId, source, results }: LiveSyncInput) {
+type SessionSnapshot = {
+  source: string;
+  taskId: string;
+  results: TestSummary;
+  activePane: LiveActivePane;
+  previewPreset: PreviewPreset;
+  previewScrollY: number;
+};
+
+export function useLiveSessionSync({
+  lesson,
+  week,
+  taskId,
+  source,
+  results,
+  activePane,
+  previewPreset,
+  previewScrollY,
+  enabled = true,
+}: LiveSyncInput) {
   const { user, role, firebaseReady } = useAuthSession();
-  const latest = useRef({ source, taskId, results });
-  latest.current = { source, taskId, results };
+  const latest = useRef<SessionSnapshot>({
+    source,
+    taskId,
+    results,
+    activePane,
+    previewPreset,
+    previewScrollY,
+  });
+
+  useEffect(() => {
+    latest.current = {
+      source,
+      taskId,
+      results,
+      activePane,
+      previewPreset,
+      previewScrollY,
+    };
+  }, [activePane, previewPreset, previewScrollY, results, source, taskId]);
 
   const writeSession = useCallback(
     async (status: "coding" | "testing" | "active" | "idle", lastAction: string) => {
-      if (!firebaseReady || role !== "student" || !user) return;
+      if (!enabled || !firebaseReady || role !== "student" || !user) return;
       const firebase = getFirebaseClient();
       if (!firebase) return;
       const snapshot = latest.current;
@@ -44,6 +86,10 @@ export function useLiveSessionSync({ lesson, week, taskId, source, results }: Li
             totalTests: lesson.tests.length,
             status,
             lastAction,
+            activePane: snapshot.activePane,
+            previewPreset: snapshot.previewPreset,
+            previewScrollY: Math.max(0, Math.round(snapshot.previewScrollY)),
+            previewUpdatedAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
           },
           { merge: true },
@@ -52,17 +98,31 @@ export function useLiveSessionSync({ lesson, week, taskId, source, results }: Li
         // Live monitoring is best-effort and must never interrupt the student's editor.
       }
     },
-    [firebaseReady, lesson.id, lesson.tests.length, role, user, week.id],
+    [enabled, firebaseReady, lesson.id, lesson.tests.length, role, user, week.id],
   );
 
   useEffect(() => {
-    if (!firebaseReady || role !== "student" || !user) return;
+    if (!enabled || !firebaseReady || role !== "student" || !user) return;
     const timer = window.setTimeout(() => void writeSession("coding", "Kod yazıyor"), CODE_SYNC_DELAY);
     return () => window.clearTimeout(timer);
-  }, [firebaseReady, role, source, taskId, user, writeSession]);
+  }, [enabled, firebaseReady, role, source, taskId, user, writeSession]);
 
   useEffect(() => {
-    if (!firebaseReady || role !== "student" || !user) return;
+    if (!enabled || !firebaseReady || role !== "student" || !user) return;
+    void writeSession("active", activePane === "result" ? "Canlı sonucu inceliyor" : activePane === "mission" ? "Görevi inceliyor" : "Kod alanında");
+  }, [activePane, enabled, firebaseReady, previewPreset, role, user, writeSession]);
+
+  useEffect(() => {
+    if (!enabled || !firebaseReady || role !== "student" || !user) return;
+    const timer = window.setTimeout(
+      () => void writeSession("active", "Önizlemeyi inceliyor"),
+      PREVIEW_SCROLL_SYNC_DELAY,
+    );
+    return () => window.clearTimeout(timer);
+  }, [enabled, firebaseReady, previewScrollY, role, user, writeSession]);
+
+  useEffect(() => {
+    if (!enabled || !firebaseReady || role !== "student" || !user) return;
     void writeSession("active", "Ders ekranında");
     const heartbeat = window.setInterval(() => void writeSession("active", "Ders ekranında"), HEARTBEAT_DELAY);
 
@@ -76,7 +136,7 @@ export function useLiveSessionSync({ lesson, week, taskId, source, results }: Li
         updatedAt: serverTimestamp(),
       }).catch(() => undefined);
     };
-  }, [firebaseReady, role, user, writeSession]);
+  }, [enabled, firebaseReady, role, user, writeSession]);
 
   const markTesting = useCallback(
     async (nextResults?: TestSummary) => {
@@ -85,5 +145,6 @@ export function useLiveSessionSync({ lesson, week, taskId, source, results }: Li
     },
     [writeSession],
   );
+
   return { markTesting };
 }

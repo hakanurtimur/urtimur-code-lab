@@ -1,8 +1,11 @@
+import type { LiveActivePane, PreviewPreset } from "@/features/live-session/types";
+
 export type StudentRecord = {
   id: string;
   name: string;
   username: string;
   active: boolean;
+  maxUnlockedWeekOrder: number;
   createdAt: string | null;
   updatedAt: string | null;
 };
@@ -29,5 +32,9 @@ export type LiveSessionRecord = {
   totalTests: number;
   status: LiveSessionStatus;
   lastAction: string;
+  activePane: LiveActivePane;
+  previewPreset: PreviewPreset;
+  previewScrollY: number;
+  previewUpdatedAtMs: number | null;
   updatedAtMs: number | null;
 };

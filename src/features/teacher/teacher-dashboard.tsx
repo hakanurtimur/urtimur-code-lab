@@ -1,6 +1,13 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  FormEvent,
+  type SetStateAction,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import {
   Activity,
   BookOpenCheck,
@@ -30,8 +37,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { TeacherSessionControls } from "@/features/auth/session-controls";
-import { curriculumModules, getLessonById } from "@/features/curriculum/get-lesson";
-import { CodeEditor } from "@/features/lesson-runner/components/code-editor";
+import { curriculumModules, getLessonById, getTotalCurriculumWeeks } from "@/features/curriculum/get-lesson";
 import { normalizeStudentUsername } from "@/features/auth/student-identity";
 import {
   createStudent,
@@ -43,12 +49,27 @@ import {
 import type { StudentRecord } from "./types";
 import { useLiveSessions } from "./use-live-sessions";
 import { useStudentProgress } from "./use-student-progress";
+import { TeacherLiveWorkspace } from "./components/teacher-live-workspace";
+import { WeekUnlockControl } from "./components/week-unlock-control";
 
 const lessonCount = curriculumModules.flatMap((module) => module.weeks).flatMap((week) => week.lessons).length;
+const totalWeeks = getTotalCurriculumWeeks();
 const stageLabels: Record<string, string> = { practice: "Practice", challenge: "Challenge", mini: "Mini Build" };
 
 type CreateForm = { name: string; username: string; password: string };
 type EditForm = { name: string; username: string; password: string; active: boolean };
+type EditDraft = { studentId: string; form: EditForm };
+
+const emptyEditForm: EditForm = { name: "", username: "", password: "", active: true };
+
+function editFormFromStudent(student: StudentRecord): EditForm {
+  return {
+    name: student.name,
+    username: student.username,
+    password: "",
+    active: student.active,
+  };
+}
 
 function formatAgo(timestamp: number | null, now: number) {
   if (!timestamp) return "henüz hareket yok";
@@ -76,42 +97,78 @@ export function TeacherDashboard() {
   const [now, setNow] = useState(() => Date.now());
   const [query, setQuery] = useState("");
   const [createForm, setCreateForm] = useState<CreateForm>({ name: "", username: "", password: "" });
-  const [editForm, setEditForm] = useState<EditForm>({ name: "", username: "", password: "", active: true });
+  const [editDraft, setEditDraft] = useState<EditDraft | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const { sessions: liveSessions, error: liveError } = useLiveSessions();
   const selected = students.find((student) => student.id === selectedUid) ?? null;
+  const editForm = selected
+    ? editDraft?.studentId === selected.id
+      ? editDraft.form
+      : editFormFromStudent(selected)
+    : emptyEditForm;
+  const setEditForm = useCallback((action: SetStateAction<EditForm>) => {
+    if (!selected) return;
+    setEditDraft((current) => {
+      const currentForm = current?.studentId === selected.id
+        ? current.form
+        : editFormFromStudent(selected);
+      return {
+        studentId: selected.id,
+        form: typeof action === "function" ? action(currentForm) : action,
+      };
+    });
+  }, [selected]);
   const liveSession = selectedUid ? liveSessions[selectedUid] ?? null : null;
   const { items: progressItems, error: progressError } = useStudentProgress(selectedUid);
   const completedLessons = progressItems.filter((item) => item.completed).length;
+
+  const applyStudents = useCallback((nextStudents: StudentRecord[]) => {
+    setStudents(nextStudents);
+    setSelectedUid((current) => current && nextStudents.some((student) => student.id === current)
+      ? current
+      : nextStudents[0]?.id ?? null);
+  }, []);
 
   const refresh = useCallback(async () => {
     setError("");
     try {
       const result = await listStudents();
-      setStudents(result.students);
-      setSelectedUid((current) => current && result.students.some((student) => student.id === current) ? current : result.students[0]?.id ?? null);
+      applyStudents(result.students);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Öğrenciler yüklenemedi.");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [applyStudents]);
 
   useEffect(() => {
-    void refresh();
+    let active = true;
+    void listStudents()
+      .then((result) => {
+        if (active) applyStudents(result.students);
+      })
+      .catch((cause: unknown) => {
+        if (active) setError(cause instanceof Error ? cause.message : "Öğrenciler yüklenemedi.");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
     const timer = window.setInterval(() => setNow(Date.now()), 10_000);
-    return () => window.clearInterval(timer);
-  }, [refresh]);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [applyStudents]);
 
-  useEffect(() => {
-    if (!selected) return;
-    setEditForm({ name: selected.name, username: selected.username, password: "", active: selected.active });
+  const selectStudent = useCallback((studentId: string) => {
+    setSelectedUid(studentId);
+    setEditDraft(null);
     setConfirmDelete(false);
     setMessage("");
     setError("");
-  }, [selected]);
+  }, []);
 
   const onlineCount = students.filter((student) => isOnline(liveSessions[student.id]?.updatedAtMs ?? null, now)).length;
   const activeCount = students.filter((student) => student.active).length;
@@ -139,6 +196,7 @@ export function TeacherDashboard() {
       setShowCreate(false);
       await refresh();
       setSelectedUid(result.student.id);
+      setEditDraft(null);
       setMessage("Öğrenci hesabı oluşturuldu.");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Öğrenci oluşturulamadı.");
@@ -177,10 +235,27 @@ export function TeacherDashboard() {
     try {
       await deleteStudent(selected.id);
       setSelectedUid(null);
+      setEditDraft(null);
       await refresh();
       setMessage("Öğrenci silindi.");
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Öğrenci silinemedi."); }
     finally { setBusy(false); }
+  };
+
+  const changeUnlockedWeek = async (nextWeekOrder: number) => {
+    if (!selected) return;
+    setBusy(true); setError(""); setMessage("");
+    try {
+      await updateStudent(selected.id, { maxUnlockedWeekOrder: nextWeekOrder });
+      setStudents((current) => current.map((student) => student.id === selected.id
+        ? { ...student, maxUnlockedWeekOrder: nextWeekOrder }
+        : student));
+      setMessage(`Rota erişimi Hafta ${nextWeekOrder}'e kadar güncellendi.`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Rota erişimi güncellenemedi.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   const summaryCards = [
@@ -202,7 +277,7 @@ export function TeacherDashboard() {
           <div>
             <span className="surface-kicker">CANLI SINIF KONTROL MERKEZİ</span>
             <h1>Öğrencinin kodunu, yazarken gör.</h1>
-            <p>Hesapları tek panelden yönet; hangi görevde olduklarını, test sonuçlarını ve editördeki son kodu gerçek zamanlı izle.</p>
+            <p>Hesapları tek panelden yönet; öğrencinin kodunu, canlı browser sonucunu, testlerini ve açık rotasını gerçek zamanlı izle.</p>
           </div>
           <Button size="lg" onClick={() => setShowCreate((value) => !value)}>
             {showCreate ? <RefreshCcw /> : <UserPlus />}{showCreate ? "Formu kapat" : "Öğrenci ekle"}
@@ -251,7 +326,7 @@ export function TeacherDashboard() {
                 const online = isOnline(session?.updatedAtMs ?? null, now);
                 const lessonTitle = session?.lessonId ? getLessonById(session.lessonId)?.title : null;
                 return (
-                  <button key={student.id} type="button" onClick={() => setSelectedUid(student.id)} className={selectedUid === student.id ? "teacher-roster-item is-selected" : "teacher-roster-item"}>
+                  <button key={student.id} type="button" onClick={() => selectStudent(student.id)} className={selectedUid === student.id ? "teacher-roster-item is-selected" : "teacher-roster-item"}>
                     <span className="teacher-student-avatar">{student.name.slice(0, 1).toLocaleUpperCase("tr")}</span>
                     <span className="teacher-roster-copy"><strong>{student.name}</strong><small>{lessonTitle || `@${student.username}`}</small></span>
                     <span className={online ? "teacher-presence is-online" : "teacher-presence"}><i />{online ? "Canlı" : "Offline"}</span>
@@ -283,10 +358,7 @@ export function TeacherDashboard() {
                     <div className="teacher-live-score"><span><small>TESTLER</small><strong>{liveSession ? `${liveSession.passedCount}/${liveSession.totalTests}` : "—"}</strong></span></div>
                   </div>
 
-                  <div className="teacher-live-editor-header"><span><Eye /> Canlı kod · yalnızca görüntüleme</span><small>Öğrenci yazdıkça yaklaşık 750 ms içinde güncellenir.</small></div>
-                  <div className="teacher-live-editor">
-                    <CodeEditor value={liveSession?.code ?? "<!-- Öğrenci ders editörünü açtığında kod burada canlı görünecek. -->"} readOnly minHeight="500px" ariaLabel={`${selected.name} canlı kodu`} />
-                  </div>
+                  <TeacherLiveWorkspace session={liveSession} studentName={selected.name} />
                 </section>
 
                 <div className="teacher-detail-grid">
@@ -296,6 +368,12 @@ export function TeacherDashboard() {
                       <CircularProgress value={selectedProgressPercent} size={88} strokeWidth={8} tone="sky"><span><strong>{selectedProgressPercent}%</strong><small>tamam</small></span></CircularProgress>
                       <div><strong>{completedLessons}/{lessonCount} ders</strong><p>Özgün companion görevleri</p><Progress value={selectedProgressPercent} /></div>
                     </div>
+                    <WeekUnlockControl
+                      value={selected.maxUnlockedWeekOrder}
+                      totalWeeks={totalWeeks}
+                      busy={busy}
+                      onChange={changeUnlockedWeek}
+                    />
                     <div className="teacher-recent-progress">
                       <span className="surface-kicker">SON ÇALIŞMALAR</span>
                       {[...progressItems].sort((a, b) => (b.updatedAtMs ?? 0) - (a.updatedAtMs ?? 0)).slice(0, 5).map((item) => (

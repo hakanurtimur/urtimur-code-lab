@@ -2,6 +2,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { TeacherDashboard } from "./teacher-dashboard";
+import { updateStudent } from "./teacher-api";
 
 vi.mock("@/features/auth/session-controls", () => ({
   TeacherSessionControls: () => <button type="button">Çıkış yap</button>,
@@ -21,6 +22,7 @@ vi.mock("./teacher-api", () => ({
         name: "Ege Yılmaz",
         username: "ege_01",
         active: true,
+        maxUnlockedWeekOrder: 1,
         createdAt: null,
         updatedAt: null,
       },
@@ -29,13 +31,14 @@ vi.mock("./teacher-api", () => ({
         name: "Mina Kaya",
         username: "mina_02",
         active: false,
+        maxUnlockedWeekOrder: 2,
         createdAt: null,
         updatedAt: null,
       },
     ],
   })),
   createStudent: vi.fn(),
-  updateStudent: vi.fn(),
+  updateStudent: vi.fn(async () => ({ ok: true })),
   resetStudentProgress: vi.fn(),
   deleteStudent: vi.fn(),
 }));
@@ -53,6 +56,10 @@ vi.mock("./use-live-sessions", () => ({
         totalTests: 3,
         status: "coding",
         lastAction: "Kod yazıyor",
+        activePane: "result",
+        previewPreset: "mobile",
+        previewScrollY: 120,
+        previewUpdatedAtMs: Date.now(),
         updatedAtMs: Date.now(),
       },
     },
@@ -78,7 +85,7 @@ vi.mock("./use-student-progress", () => ({
 }));
 
 describe("TeacherDashboard", () => {
-  it("shows the class summary, searchable roster, live code, and account controls", async () => {
+  it("shows live code, live browser, and teacher-controlled week access", async () => {
     const user = userEvent.setup();
     const { container } = render(<TeacherDashboard />);
     const roster = container.querySelector(".teacher-roster-list");
@@ -87,12 +94,18 @@ describe("TeacherDashboard", () => {
     await waitFor(() => expect(within(roster as HTMLElement).getByText("Ege Yılmaz")).toBeInTheDocument());
 
     expect(screen.getByText("Öğrencinin kodunu, yazarken gör.")).toBeInTheDocument();
-    expect(screen.getByText("2", { selector: ".teacher-summary-card strong" })).toBeInTheDocument();
     expect(screen.getByLabelText("Ege Yılmaz canlı kodu")).toHaveValue("<h1>R-13</h1>");
-    expect(screen.getByText("2/3")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /değişiklikleri kaydet/i })).toBeInTheDocument();
+    expect(screen.getByTitle("Ege Yılmaz canlı tarayıcı")).toHaveAttribute("srcdoc", "<h1>R-13</h1>");
+    expect(screen.getByText("Mobile · 390 × 844")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Bölünmüş" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("Açık rota: Hafta 1 / 8")).toBeInTheDocument();
 
-    await user.type(screen.getByPlaceholderText(/isim veya kullanıcı adı ara/i), "Mina");
+    await user.click(screen.getByRole("button", { name: /sonraki haftayı aç/i }));
+    await waitFor(() => expect(vi.mocked(updateStudent)).toHaveBeenCalledWith("student-1", {
+      maxUnlockedWeekOrder: 2,
+    }));
+
+    await user.type(screen.getByPlaceholderText("İsim veya kullanıcı adı ara"), "Mina");
     expect(within(roster as HTMLElement).getByText("Mina Kaya")).toBeInTheDocument();
     expect(within(roster as HTMLElement).queryByText("Ege Yılmaz")).not.toBeInTheDocument();
   });

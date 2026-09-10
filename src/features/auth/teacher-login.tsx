@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Eye, Radio, ShieldCheck, Users } from "lucide-react";
@@ -83,7 +84,7 @@ export function TeacherLogin() {
             </Button>
           </form>
         </div>
-        <a className="teacher-entry-link" href="/">Öğrenci ekranına dön</a>
+        <Link className="teacher-entry-link" href="/">Öğrenci ekranına dön</Link>
       </section>
     </main>
   );

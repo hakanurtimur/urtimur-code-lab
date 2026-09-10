@@ -3,6 +3,10 @@ import type { CurriculumModule, CurriculumWeek, Lesson } from "./types";
 
 export const curriculumModules: CurriculumModule[] = [basicHtmlModule];
 
+export function getTotalCurriculumWeeks(): number {
+  return curriculumModules.reduce((total, module) => total + module.weeks.length, 0);
+}
+
 export function getAllLessons(): Lesson[] {
   return curriculumModules.flatMap((module) =>
     module.weeks.flatMap((week) => week.lessons),

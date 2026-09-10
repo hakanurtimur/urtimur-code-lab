@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
-  ArrowLeft,
   BookOpen,
   CheckCircle2,
   ChevronDown,
@@ -13,17 +13,21 @@ import {
   Eye,
   FileCode2,
   Lightbulb,
+  LockKeyhole,
   Monitor,
   PanelLeft,
   Play,
   RotateCcw,
   Route,
-  Sparkles,
   Target,
-  Trophy,
 } from "lucide-react";
 import type { CurriculumWeek, Lesson } from "@/features/curriculum/types";
+import { curriculumModules, getTotalCurriculumWeeks } from "@/features/curriculum/get-lesson";
+import { deriveLearningPathState } from "@/features/curriculum/learning-path-state";
+import { getLessonCompletionHandoff, getLessonNavigation } from "@/features/curriculum/lesson-navigation";
+import { useCompletedLessonIds } from "@/features/progress/use-completed-lesson-ids";
 import { useLessonProgress } from "@/features/progress/use-lesson-progress";
+import { useStudentAccess } from "@/features/progress/use-student-access";
 import { useLiveSessionSync } from "@/features/live-session/use-live-session-sync";
 import { StudentSessionControls } from "@/features/auth/session-controls";
 import { Brand } from "@/components/brand";
@@ -37,9 +41,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { CodeEditor } from "./code-editor";
 import { LivePreview } from "./live-preview";
+import { LessonCompletionCard } from "./lesson-completion-card";
+import { LessonDrawer } from "./lesson-drawer";
+import { LessonNavigation } from "./lesson-navigation";
 import { MissionStageCard } from "./mission-stage-card";
 import { TestResults } from "./test-results";
 import { WorkspaceStatus } from "./workspace-status";
+import type { LiveActivePane, PreviewPreset } from "@/features/live-session/types";
 import { runHtmlTests, type TestResult } from "../lib/run-html-tests";
 
 type LessonWorkspaceProps = {
@@ -47,7 +55,6 @@ type LessonWorkspaceProps = {
   week: CurriculumWeek;
 };
 
-type ActivePane = "mission" | "code" | "result";
 type LessonStageKey = "practice" | "challenge" | "mini";
 
 const stageConfig = {
@@ -56,19 +63,60 @@ const stageConfig = {
   mini: { label: "Mini Build", icon: FileCode2, tone: "peach" as const },
 };
 
+const allWeeks = curriculumModules.flatMap((module) => module.weeks);
+
 export function LessonWorkspace({ lesson, week }: LessonWorkspaceProps) {
+  const router = useRouter();
   const [source, setSource] = useState(lesson.starterCode);
   const [results, setResults] = useState<TestResult[]>([]);
-  const [activePane, setActivePane] = useState<ActivePane>("code");
+  const [activePane, setActivePane] = useState<LiveActivePane>("code");
   const [activeStage, setActiveStage] = useState<LessonStageKey>("practice");
+  const [previewPreset, setPreviewPreset] = useState<PreviewPreset>("fit");
+  const [previewScrollY, setPreviewScrollY] = useState(0);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [completing, setCompleting] = useState(false);
+  const [completionError, setCompletionError] = useState("");
   const { completed, completeLesson, recordAttempt } = useLessonProgress(lesson.id);
+  const completedIds = useCompletedLessonIds();
+  const { maxUnlockedWeekOrder, loading: accessLoading } = useStudentAccess();
   const reduceMotion = useReducedMotion();
 
-  const allPassed = useMemo(() => results.length > 0 && results.every((result) => result.passed), [results]);
+  const navigation = useMemo(() => getLessonNavigation(lesson, allWeeks), [lesson]);
+  const completionHandoff = useMemo(
+    () => getLessonCompletionHandoff(lesson, allWeeks, completedIds, maxUnlockedWeekOrder),
+    [completedIds, lesson, maxUnlockedWeekOrder],
+  );
+  const pathState = useMemo(
+    () => deriveLearningPathState(allWeeks, completedIds, maxUnlockedWeekOrder),
+    [completedIds, maxUnlockedWeekOrder],
+  );
+  const weekPath = pathState.weeks.find((item) => item.week.id === week.id);
+  const canAccessLesson = !accessLoading && week.order <= maxUnlockedWeekOrder;
+  const allPassed = useMemo(
+    () => results.length > 0 && results.every((result) => result.passed),
+    [results],
+  );
   const passedCount = results.filter((result) => result.passed).length;
-  const testPercent = lesson.tests.length ? Math.round((passedCount / lesson.tests.length) * 100) : 0;
-  const currentStage = activeStage === "practice" ? lesson.practice : activeStage === "challenge" ? lesson.challenge : lesson.miniBuild;
-  const { markTesting } = useLiveSessionSync({ lesson, week, taskId: activeStage, source, results });
+  const testPercent = lesson.tests.length
+    ? Math.round((passedCount / lesson.tests.length) * 100)
+    : 0;
+  const currentStage = activeStage === "practice"
+    ? lesson.practice
+    : activeStage === "challenge"
+      ? lesson.challenge
+      : lesson.miniBuild;
+
+  const { markTesting } = useLiveSessionSync({
+    lesson,
+    week,
+    taskId: activeStage,
+    source,
+    results,
+    activePane,
+    previewPreset,
+    previewScrollY,
+    enabled: canAccessLesson,
+  });
 
   const runTests = () => {
     const nextResults = runHtmlTests(source, lesson.tests);
@@ -82,16 +130,72 @@ export function LessonWorkspace({ lesson, week }: LessonWorkspaceProps) {
   const resetLesson = () => {
     setSource(lesson.starterCode);
     setResults([]);
+    setPreviewScrollY(0);
   };
+
+  const persistCompletion = async () => {
+    setCompletionError("");
+    if (completed) return true;
+
+    setCompleting(true);
+    try {
+      const saved = await completeLesson();
+      if (!saved) {
+        setCompletionError("İlerleme kaydedilemedi. Bağlantıyı kontrol edip tekrar dene.");
+      }
+      return saved;
+    } catch {
+      setCompletionError("İlerleme kaydedilemedi. Bağlantıyı kontrol edip tekrar dene.");
+      return false;
+    } finally {
+      setCompleting(false);
+    }
+  };
+
+  const completeStay = async () => {
+    await persistCompletion();
+  };
+
+  const completeAndNavigate = async (href: string) => {
+    const saved = await persistCompletion();
+    if (saved) router.push(href);
+  };
+
+  if (accessLoading) {
+    return (
+      <main className="lesson-access-state">
+        <Brand />
+        <LearningSticker icon={Route} label="Rota yükleniyor" tone="violet" size="lg" />
+        <div><span className="surface-kicker">ROTAN HAZIRLANIYOR</span><h1>Ders erişimin kontrol ediliyor.</h1></div>
+      </main>
+    );
+  }
+
+  if (!canAccessLesson) {
+    return (
+      <main className="lesson-access-state">
+        <Brand />
+        <LearningSticker icon={LockKeyhole} label="Kilitli rota" tone="peach" size="lg" />
+        <div><span className="surface-kicker">GELECEK ROTA</span><h1>Bu hafta henüz kilitli.</h1><p>Öğretmenin rotayı açtığında burada çalışmaya başlayabilirsin.</p></div>
+        <Button asChild><Link href="/#learning-path">Öğrenme rotasına dön</Link></Button>
+      </main>
+    );
+  }
 
   return (
     <main className="lesson-workspace-page" data-workspace="lesson">
       <header className="lesson-topbar">
         <div className="lesson-topbar-start">
-          <Link href="/" className="round-icon-link" aria-label="Müfredata dön"><ArrowLeft /></Link>
           <Brand className="lesson-brand" />
           <span className="lesson-topbar-divider" aria-hidden="true" />
-          <div className="lesson-topbar-title"><span>Hafta {week.order} · {week.theme}</span><strong>{lesson.title}</strong></div>
+          <LessonNavigation
+            weekOrder={week.order}
+            totalWeeks={getTotalCurriculumWeeks()}
+            lessonIndex={navigation.currentIndex}
+            totalLessons={navigation.totalInWeek}
+            previousLesson={navigation.previousLesson}
+            onOpenDrawer={() => setDrawerOpen(true)}
+          />
         </div>
         <div className="lesson-topbar-end">
           <Badge variant="outline" className="lesson-fcc-badge">FCC {week.fccSteps.start}–{week.fccSteps.end} / 137</Badge>
@@ -99,6 +203,14 @@ export function LessonWorkspace({ lesson, week }: LessonWorkspaceProps) {
           <StudentSessionControls />
         </div>
       </header>
+
+      <LessonDrawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        week={week}
+        currentLesson={lesson}
+        lessons={weekPath?.lessons ?? []}
+      />
 
       <nav className="lesson-pane-switcher" aria-label="Ders çalışma alanları">
         <button className={activePane === "mission" ? "is-active" : ""} onClick={() => setActivePane("mission")} type="button"><PanelLeft /> Görev</button>
@@ -110,13 +222,22 @@ export function LessonWorkspace({ lesson, week }: LessonWorkspaceProps) {
         <aside
           className={cn("lesson-mission-pane", activePane !== "mission" && "is-mobile-hidden")}
           data-pane="mission"
+          onPointerDown={() => setActivePane("mission")}
+          onFocusCapture={() => setActivePane("mission")}
         >
           <div className="mission-pane-scroll">
             <section className="mission-hero-card">
               <div className="mission-hero-topline"><Badge>HAFTA {week.order}</Badge><span>{lesson.eyebrow}</span></div>
               <h1>{lesson.title}</h1>
               <p>{lesson.description}</p>
-              <div className="mission-hero-art" aria-hidden="true"><LearningSticker icon={Code2} label="HTML görevi" tone="sky" size="lg" /><span>&lt;/&gt;</span></div>
+              <motion.div
+                className="mission-hero-art"
+                aria-hidden="true"
+                animate={reduceMotion ? undefined : { y: [0, -5, 0], rotate: [0, 1.5, 0] }}
+                transition={{ duration: 4.5, repeat: Infinity, ease: "easeInOut" }}
+              >
+                <LearningSticker icon={Code2} label="HTML görevi" tone="sky" size="lg" /><span>&lt;/&gt;</span>
+              </motion.div>
             </section>
 
             <section className="mission-checkpoint-card">
@@ -127,19 +248,30 @@ export function LessonWorkspace({ lesson, week }: LessonWorkspaceProps) {
             <Tabs value={activeStage} onValueChange={(value) => setActiveStage(value as LessonStageKey)} className="mission-stage-tabs">
               <TabsList className="mission-stage-switcher">
                 {(Object.entries(stageConfig) as Array<[LessonStageKey, typeof stageConfig.practice]>).map(([key, config]) => (
-                  <TabsTrigger key={key} value={key}>{config.label}</TabsTrigger>
+                  <TabsTrigger key={key} value={key} className="mission-stage-trigger">
+                    {activeStage === key && !reduceMotion ? <motion.span layoutId="active-stage-pill" className="mission-stage-active-pill" /> : null}
+                    <span>{config.label}</span>
+                  </TabsTrigger>
                 ))}
               </TabsList>
-              {(Object.entries(stageConfig) as Array<[LessonStageKey, typeof stageConfig.practice]>).map(([key, config]) => (
-                <TabsContent value={key} key={key}>
-                  <MissionStageCard
-                    stage={key === "practice" ? lesson.practice : key === "challenge" ? lesson.challenge : lesson.miniBuild}
-                    icon={config.icon}
-                    tone={config.tone}
-                    label={config.label}
-                  />
-                </TabsContent>
-              ))}
+              <AnimatePresence mode="wait" initial={false}>
+                <motion.div
+                  key={activeStage}
+                  initial={reduceMotion ? false : { opacity: 0, x: 10 }}
+                  animate={reduceMotion ? undefined : { opacity: 1, x: 0 }}
+                  exit={reduceMotion ? undefined : { opacity: 0, x: -8 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <TabsContent value={activeStage} forceMount>
+                    <MissionStageCard
+                      stage={currentStage}
+                      icon={stageConfig[activeStage].icon}
+                      tone={stageConfig[activeStage].tone}
+                      label={stageConfig[activeStage].label}
+                    />
+                  </TabsContent>
+                </motion.div>
+              </AnimatePresence>
             </Tabs>
 
             <Collapsible className="mission-disclosure">
@@ -168,12 +300,14 @@ export function LessonWorkspace({ lesson, week }: LessonWorkspaceProps) {
           className={cn("lesson-code-pane", activePane === "result" && "is-workspace-hidden", activePane !== "code" && "is-mobile-hidden")}
           data-pane="code"
           aria-label="Kod alanı"
+          onPointerDown={() => setActivePane("code")}
+          onFocusCapture={() => setActivePane("code")}
         >
           <div className="code-pane-toolbar">
             <div className="code-file-tab"><span className="code-file-icon">HTML</span><strong>index.html</strong><i /></div>
             <div className="code-toolbar-actions"><WorkspaceStatus dirty={source !== lesson.starterCode} /><Button variant="ghost" size="sm" onClick={resetLesson}><RotateCcw /> Sıfırla</Button></div>
           </div>
-          <CodeEditor value={source} onChange={setSource} minHeight="560px" />
+          <CodeEditor value={source} onChange={setSource} minHeight="620px" />
           <div className="code-action-bar">
             <div><Code2 /><span><strong>{currentStage.title.split("·").pop()?.trim()}</strong><small>Kodun değiştikçe önizleme de güncellenir.</small></span></div>
             <Button size="lg" onClick={runTests}><Play className="fill-current" /> Kodumu kontrol et</Button>
@@ -184,13 +318,30 @@ export function LessonWorkspace({ lesson, week }: LessonWorkspaceProps) {
           className={cn("lesson-result-pane", activePane !== "result" && "is-workspace-hidden", activePane !== "result" && "is-mobile-hidden")}
           data-pane="result"
           aria-label="Canlı önizleme ve test sonuçları"
+          onPointerDown={() => setActivePane("result")}
+          onFocusCapture={() => setActivePane("result")}
         >
           <div className="result-pane-toolbar">
             <div><span className="surface-kicker">CANLI SONUÇ</span><strong>Önizleme</strong></div>
             <span className="live-indicator"><i /> canlı</span>
           </div>
 
-          <div className="result-preview-stage"><LivePreview source={source} /></div>
+          <div className="result-preview-stage">
+            <LivePreview
+              source={source}
+              mode={previewPreset}
+              scrollY={previewScrollY}
+              onModeChange={(mode) => {
+                setActivePane("result");
+                setPreviewPreset(mode);
+                setPreviewScrollY(0);
+              }}
+              onScrollChange={(nextScrollY) => {
+                setActivePane("result");
+                setPreviewScrollY(nextScrollY);
+              }}
+            />
+          </div>
 
           <section className="test-drawer-card">
             <div className="test-drawer-heading">
@@ -205,19 +356,18 @@ export function LessonWorkspace({ lesson, week }: LessonWorkspaceProps) {
               <div className="tests-empty-state"><Eye /><div><strong>Önce kendi çözümünü dene.</strong><p>“Kodumu kontrol et” dediğinde her gereksinimi tek tek inceleyeceğiz.</p></div></div>
             )}
 
-            <AnimatePresence>
+            <AnimatePresence mode="wait">
               {allPassed ? (
-                <motion.div
-                  className="lesson-success-card"
-                  initial={reduceMotion ? false : { opacity: 0, scale: 0.98 }}
-                  animate={reduceMotion ? undefined : { opacity: 1, scale: 1 }}
-                  exit={reduceMotion ? undefined : { opacity: 0, scale: 0.98 }}
-                  transition={{ type: "spring", stiffness: 360, damping: 28 }}
-                >
-                  <LearningSticker icon={Trophy} label="Tüm testler geçti" tone="yellow" size="lg" />
-                  <div><span>GÖREV TAMAM</span><strong>Tüm kontroller geçti.</strong><p>Bu aşamayı kendi çözümünle tamamladın.</p></div>
-                  {completed ? <Badge variant="success"><CheckCircle2 /> Kaydedildi</Badge> : <Button variant="success" onClick={completeLesson}><Sparkles /> Dersi tamamla</Button>}
-                </motion.div>
+                <LessonCompletionCard
+                  key="completion"
+                  lesson={lesson}
+                  handoff={completionHandoff}
+                  completed={completed}
+                  completing={completing}
+                  error={completionError}
+                  onCompleteStay={completeStay}
+                  onCompleteAndNavigate={completeAndNavigate}
+                />
               ) : null}
             </AnimatePresence>
           </section>

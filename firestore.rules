@@ -48,6 +48,11 @@ service cloud.firestore {
         && request.resource.data.code is string
         && request.resource.data.code.size() <= 100000
         && request.resource.data.status in ['coding', 'testing', 'active', 'idle']
+        && request.resource.data.activePane in ['mission', 'code', 'result']
+        && request.resource.data.previewPreset in ['fit', 'desktop', 'tablet', 'mobile']
+        && request.resource.data.previewScrollY is number
+        && request.resource.data.previewScrollY >= 0
+        && request.resource.data.previewScrollY <= 1000000
         && request.resource.data.keys().hasOnly([
           'studentId',
           'lessonId',
@@ -58,6 +63,10 @@ service cloud.firestore {
           'totalTests',
           'status',
           'lastAction',
+          'activePane',
+          'previewPreset',
+          'previewScrollY',
+          'previewUpdatedAt',
           'updatedAt'
         ]);
       allow delete: if false;

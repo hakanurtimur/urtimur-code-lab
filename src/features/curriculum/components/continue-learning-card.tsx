@@ -15,6 +15,7 @@ type ContinueLearningCardProps = {
   curriculumPercent: number;
   weekPercent: number;
   studentName: string;
+  reviewMode?: boolean;
 };
 
 export function ContinueLearningCard({
@@ -23,6 +24,7 @@ export function ContinueLearningCard({
   curriculumPercent,
   weekPercent,
   studentName,
+  reviewMode = false,
 }: ContinueLearningCardProps) {
   const reduceMotion = useReducedMotion();
 
@@ -36,21 +38,21 @@ export function ContinueLearningCard({
     >
       <div className="continue-card-copy">
         <div className="continue-card-badges">
-          <Badge className="soft-badge soft-badge-white"><Sparkles /> Bu haftanın görevi</Badge>
+          <Badge className="soft-badge soft-badge-white"><Sparkles /> {reviewMode ? "Açık rota tamam" : "Bu haftanın görevi"}</Badge>
           <span><MapPin /> FCC {week.fccSteps.start}–{week.fccSteps.end} / 137</span>
         </div>
 
         <div>
           <p className="continue-greeting">Merhaba {studentName},</p>
           <h1>{week.theme}</h1>
-          <p className="continue-lesson-title">Sıradaki ders: <strong>{lesson.title}</strong></p>
+          <p className="continue-lesson-title">{reviewMode ? "Tekrar açabileceğin ders" : "Sıradaki ders"}: <strong>{lesson.title}</strong></p>
           <p className="continue-summary">{week.summary}</p>
         </div>
 
         <div className="continue-card-actions">
           <Button asChild size="lg" className="continue-primary-action">
             <Link href={`/lesson/${lesson.id}`}>
-              Derse devam et <ArrowRight />
+              {reviewMode ? "Dersi tekrar aç" : "Derse devam et"} <ArrowRight />
             </Link>
           </Button>
           <span className="continue-save-note"><CheckCircle2 /> İlerlemen otomatik kaydedilir</span>

@@ -59,6 +59,9 @@ export async function PATCH(request: Request, context: Context) {
       authUpdates.disabled = !payload.active;
       profileUpdates.active = payload.active;
     }
+    if (payload.maxUnlockedWeekOrder !== undefined) {
+      profileUpdates.maxUnlockedWeekOrder = payload.maxUnlockedWeekOrder;
+    }
 
     const auth = getAdminAuth();
     if (Object.keys(authUpdates).length) await auth.updateUser(uid, authUpdates);

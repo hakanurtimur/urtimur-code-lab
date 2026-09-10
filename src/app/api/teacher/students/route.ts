@@ -33,6 +33,7 @@ export async function GET(request: Request) {
         name: String(data.name ?? ""),
         username: String(data.username ?? ""),
         active: data.active !== false,
+        maxUnlockedWeekOrder: typeof data.maxUnlockedWeekOrder === "number" ? data.maxUnlockedWeekOrder : 1,
         createdAt: dateValue(data.createdAt),
         updatedAt: dateValue(data.updatedAt),
       };
@@ -64,12 +65,13 @@ export async function POST(request: Request) {
       username: payload.username,
       usernameNormalized: payload.username,
       active: true,
+      maxUnlockedWeekOrder: 1,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
 
     return NextResponse.json(
-      { student: { id: user.uid, name: payload.name, username: payload.username, active: true, createdAt: null, updatedAt: null } },
+      { student: { id: user.uid, name: payload.name, username: payload.username, active: true, maxUnlockedWeekOrder: 1, createdAt: null, updatedAt: null } },
       { status: 201 },
     );
   } catch (error) {

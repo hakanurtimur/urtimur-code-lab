@@ -1,26 +1,79 @@
-import { render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it } from "vitest";
+import { render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { basicHtmlModule } from "./data/basic-html";
 import { CurriculumDashboard } from "./curriculum-dashboard";
 import { AuthProvider } from "@/features/auth/auth-provider";
 
+vi.mock("@/features/auth/session-controls", () => ({
+  StudentSessionControls: () => <span>Yerel mod</span>,
+}));
+
 describe("CurriculumDashboard", () => {
   beforeEach(() => localStorage.clear());
 
-  it("prioritizes the earliest companion lesson and shows the complete eight-week route", () => {
-    const firstAvailableWeek = basicHtmlModule.weeks.find((week) => week.fccStatus !== "upcoming");
-    const firstLesson = firstAvailableWeek?.lessons[0];
-
-    const { container } = render(<AuthProvider><CurriculumDashboard modules={[basicHtmlModule]} /></AuthProvider>);
-
-    expect(screen.getByText("Devam et")).toBeInTheDocument();
-    expect(screen.getAllByText(firstAvailableWeek?.theme ?? "").length).toBeGreaterThan(0);
-    expect(screen.getAllByText(firstLesson?.title ?? "").length).toBeGreaterThan(0);
-    expect(screen.getByRole("link", { name: /derse devam et/i })).toHaveAttribute(
-      "href",
-      `/lesson/${firstLesson?.id}`,
+  it("shows an inline eight-week learning path with one recommended lesson", () => {
+    const [firstWeek, , thirdWeek] = basicHtmlModule.weeks;
+    const firstLesson = firstWeek.lessons[0];
+    const { container } = render(
+      <AuthProvider><CurriculumDashboard modules={[basicHtmlModule]} /></AuthProvider>,
     );
-    expect(container.querySelectorAll("[data-week-card]")).toHaveLength(8);
-    expect(container.querySelector("[data-section='weekly-outcomes']")?.querySelectorAll("ol > li")).toHaveLength(5);
+
+    expect(container.querySelectorAll("[data-learning-path-week]")).toHaveLength(8);
+    expect(container.querySelector(`[data-learning-path-week="${firstWeek.id}"]`)).toHaveAttribute(
+      "data-week-state",
+      "current",
+    );
+    expect(container.querySelector(`[data-learning-path-week="${thirdWeek.id}"]`)).toHaveAttribute(
+      "data-week-state",
+      "locked",
+    );
+    expect(container.querySelector(`[data-learning-path-lessons="${firstWeek.id}"]`)).toBeInTheDocument();
+
+    const continueLinks = screen.getAllByRole("link", { name: /derse devam et/i });
+    expect(continueLinks).toHaveLength(2);
+    expect(continueLinks[0]).toHaveAttribute("href", `/lesson/${firstLesson.id}`);
+    expect(continueLinks[1]).toHaveAttribute("href", `/lesson/${firstLesson.id}`);
+  });
+
+  it("expands an unlocked week in place and keeps locked weeks non-navigable", async () => {
+    const user = userEvent.setup();
+    const [, secondWeek, thirdWeek] = basicHtmlModule.weeks;
+    const { container } = render(
+      <AuthProvider><CurriculumDashboard modules={[basicHtmlModule]} /></AuthProvider>,
+    );
+
+    await user.click(
+      screen.getByRole("button", {
+        name: new RegExp(`Hafta ${secondWeek.order}:`, "i"),
+      }),
+    );
+
+    const weekTwoLessons = await waitFor(() => {
+      const element = container.querySelector<HTMLElement>(
+        `[data-learning-path-lessons="${secondWeek.id}"]`,
+      );
+      expect(element).toBeInTheDocument();
+      return element as HTMLElement;
+    });
+
+    expect(within(weekTwoLessons).getAllByRole("link")).toHaveLength(secondWeek.lessons.length);
+
+    await user.click(
+      screen.getByRole("button", {
+        name: new RegExp(`Hafta ${thirdWeek.order}:`, "i"),
+      }),
+    );
+
+    const lockedWeek = await waitFor(() => {
+      const element = container.querySelector<HTMLElement>(
+        `[data-learning-path-lessons="${thirdWeek.id}"]`,
+      );
+      expect(element).toBeInTheDocument();
+      return element as HTMLElement;
+    });
+
+    expect(lockedWeek).toHaveTextContent(/öğretmenin açtığında/i);
+    expect(within(lockedWeek).queryByRole("link")).not.toBeInTheDocument();
   });
 });

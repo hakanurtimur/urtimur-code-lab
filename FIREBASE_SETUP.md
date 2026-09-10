@@ -69,10 +69,18 @@ npm run dev
 - Öğretmen login: `/teacher/login`
 - Öğretmen paneli: `/teacher`
 
-Öğrencileri artık Firebase Console'dan değil, `/teacher` içinden oluşturup yönetebilirsin.
+Öğrencileri artık Firebase Console'dan değil, `/teacher` içinden oluşturup yönetebilirsin. Her yeni öğrenci yalnızca Hafta 1 erişimiyle başlar; sonraki haftaları öğrenci kartındaki **Rota erişimi** alanından açarsın.
 
 ## 8. Vercel
 
 `.env.local` içindeki 9 değeri Vercel → Project Settings → Environment Variables içine ekle ve redeploy et.
 
-Bitti. Bundan sonra öğrenci ilerlemesi Firestore'da tutulur ve açık ders ekranındaki kod teacher paneline canlı akar.
+Bitti. Bundan sonra öğrenci ilerlemesi Firestore'da tutulur. Açık ders ekranındaki kod, aktif çalışma paneli, preview cihazı ve preview kaydırma konumu teacher paneline canlı akar. Teacher panelinde **Kod / Tarayıcı / Bölünmüş** görünümleri arasında geçebilirsin.
+
+## Rules güncellemesi
+
+Bu upgrade yeni canlı-preview alanları eklediği için mevcut projende rules dosyasını yeniden yayınla:
+
+```bash
+npx firebase-tools deploy --only firestore:rules --project urtimur-code-lab
+```

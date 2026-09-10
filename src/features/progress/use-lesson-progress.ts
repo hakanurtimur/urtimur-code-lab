@@ -1,10 +1,11 @@
 "use client";
 
-import { doc, increment, onSnapshot, serverTimestamp, setDoc } from "firebase/firestore";
-import { useCallback, useEffect, useState } from "react";
+import { doc, increment, serverTimestamp, setDoc } from "firebase/firestore";
+import { useCallback, useState } from "react";
 import { useAuthSession } from "@/features/auth/auth-provider";
 import { getFirebaseClient } from "@/lib/firebase/client";
-import { markLessonCompleted, readCompletedLessonIds } from "./progress-store";
+import { markLessonCompleted } from "./progress-store";
+import { useCompletedLessonIds } from "./use-completed-lesson-ids";
 
 export type LessonAttemptSummary = {
   passedTests: number;
@@ -13,23 +14,9 @@ export type LessonAttemptSummary = {
 
 export function useLessonProgress(lessonId: string) {
   const { user, role, firebaseReady } = useAuthSession();
-  const [completed, setCompleted] = useState(false);
-
-  useEffect(() => {
-    if (!firebaseReady || role !== "student" || !user) {
-      setCompleted(readCompletedLessonIds(window.localStorage).includes(lessonId));
-      return;
-    }
-
-    const firebase = getFirebaseClient();
-    if (!firebase) return;
-    const progressRef = doc(firebase.db, "students", user.uid, "progress", lessonId);
-    return onSnapshot(
-      progressRef,
-      (snapshot) => setCompleted(snapshot.exists() && snapshot.data().completed === true),
-      () => setCompleted(false),
-    );
-  }, [firebaseReady, lessonId, role, user]);
+  const completedLessonIds = useCompletedLessonIds();
+  const [optimisticCompletedIds, setOptimisticCompletedIds] = useState<string[]>([]);
+  const completed = completedLessonIds.includes(lessonId) || optimisticCompletedIds.includes(lessonId);
 
   const recordAttempt = useCallback(
     async ({ passedTests, totalTests }: LessonAttemptSummary) => {
@@ -57,15 +44,18 @@ export function useLessonProgress(lessonId: string) {
     [firebaseReady, lessonId, role, user],
   );
 
-  const completeLesson = useCallback(async () => {
-    setCompleted(true);
+  const completeLesson = useCallback(async (): Promise<boolean> => {
+    setOptimisticCompletedIds((current) => current.includes(lessonId) ? current : [...current, lessonId]);
 
     if (!firebaseReady || role !== "student" || !user) {
       markLessonCompleted(window.localStorage, lessonId);
-      return;
+      return true;
     }
     const firebase = getFirebaseClient();
-    if (!firebase) return;
+    if (!firebase) {
+      setOptimisticCompletedIds((current) => current.filter((id) => id !== lessonId));
+      return false;
+    }
 
     try {
       await setDoc(
@@ -78,8 +68,10 @@ export function useLessonProgress(lessonId: string) {
         },
         { merge: true },
       );
+      return true;
     } catch {
-      setCompleted(false);
+      setOptimisticCompletedIds((current) => current.filter((id) => id !== lessonId));
+      return false;
     }
   }, [firebaseReady, lessonId, role, user]);
 

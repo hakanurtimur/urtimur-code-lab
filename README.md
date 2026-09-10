@@ -27,18 +27,22 @@ A creative, practice-first companion for the freeCodeCamp Responsive Web Design 
 
 - username/password sign-in with no visible email field
 - one clear continue action
+- an inline eight-week learning path with completed/current/open/locked states
+- teacher-controlled week unlocking and free lesson choice inside open weeks
 - five weekly outcomes and an eight-week visual route
 - original Practice → Challenge → Mini Build flow
 - dark CodeMirror workspace with a high-contrast caret
 - Fit, Desktop, Tablet, and Mobile preview presets
-- accessible test feedback and cloud completion
+- accessible test feedback, explicit next-lesson handoff, and cloud completion
 
 ### Teacher
 
 - email/password protected console
 - student create, edit, password reset, active/inactive, progress reset, and delete
-- realtime lesson, stage, presence, test count, and live code
-- read-only CodeMirror monitoring without screen, camera, or microphone access
+- realtime lesson, stage, presence, test count, live code, and rendered browser preview
+- Code / Browser / Split monitoring modes with synced device preset and preview scroll
+- per-student week unlock controls
+- read-only monitoring without screen, camera, or microphone access
 
 See [`docs/UI_SYSTEM.md`](./docs/UI_SYSTEM.md) for design tokens, responsive behavior, motion, and accessibility rules.
 
@@ -129,6 +133,8 @@ From the teacher console you can:
 - delete students
 - see completed lessons and latest test scores
 - watch the selected student's code live in a read-only CodeMirror editor
+- reproduce the student's Code Lab browser preview in Code / Browser / Split modes
+- open or re-lock curriculum weeks for each student
 
 ## Firestore model
 
@@ -137,6 +143,7 @@ students/{uid}
   name
   username
   active
+  maxUnlockedWeekOrder
   createdAt
   updatedAt
 
@@ -160,6 +167,10 @@ liveSessions/{uid}
   totalTests
   status
   lastAction
+  activePane
+  previewPreset
+  previewScrollY
+  previewUpdatedAt
   updatedAt
 ```
 
@@ -173,6 +184,7 @@ While a student has a lesson open:
 - a heartbeat updates every **20 seconds**
 - teacher UI considers the student online when the latest live update is under ~45 seconds old
 - running lesson tests immediately updates the live test state
+- preview device and scroll position are synchronized for the teacher browser view
 - leaving the lesson attempts to mark the live session idle
 
 The teacher receives the student's Code Lab editor content only. This is not desktop, camera, microphone, or screen surveillance.
@@ -210,17 +222,22 @@ src/components/
 
 src/features/curriculum/components/
   continue-learning-card.tsx
-  week-journey-card.tsx
-  week-detail-panel.tsx
+  learning-path.tsx
+  learning-path-week.tsx
+  learning-path-lesson.tsx
 
 src/features/lesson-runner/components/
-  mission-stage-card.tsx
-  workspace-status.tsx
-  code-editor.tsx
+  lesson-navigation.tsx
+  lesson-drawer.tsx
+  lesson-completion-card.tsx
+  preview-viewport.tsx
   live-preview.tsx
+  code-editor.tsx
 
-src/features/teacher/
-  teacher-dashboard.tsx
+src/features/teacher/components/
+  teacher-live-workspace.tsx
+  teacher-live-browser.tsx
+  week-unlock-control.tsx
 ```
 
 ## Verification note

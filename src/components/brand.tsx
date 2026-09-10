@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 
@@ -15,10 +16,13 @@ export function Brand({ href = "/", className, compact = false }: BrandProps) {
       className={cn("brand-lockup", compact && "brand-lockup-compact", className)}
     >
       <span className="brand-mark-wrap" aria-hidden="true">
-        <img
+        <Image
           data-testid="brand-mark"
           src="/brand/mark-dark.svg"
           alt=""
+          width={27}
+          height={24}
+          unoptimized
           className="brand-mark-image"
         />
       </span>

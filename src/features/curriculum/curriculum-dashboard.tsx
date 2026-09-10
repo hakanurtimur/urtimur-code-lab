@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import {
   BookOpen,
   Check,
@@ -8,20 +8,20 @@ import {
   Code2,
   Layers3,
   Rocket,
-  Sparkles,
   Target,
 } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
 import type { CurriculumModule } from "./types";
 import { useCompletedLessonIds } from "@/features/progress/use-completed-lesson-ids";
+import { useStudentAccess } from "@/features/progress/use-student-access";
 import { useAuthSession } from "@/features/auth/auth-provider";
 import { StudentSessionControls } from "@/features/auth/session-controls";
 import { Brand } from "@/components/brand";
 import { LearningSticker } from "@/components/learning-sticker";
 import { Progress } from "@/components/ui/progress";
 import { ContinueLearningCard } from "./components/continue-learning-card";
-import { WeekJourneyCard } from "./components/week-journey-card";
-import { WeekDetailPanel } from "./components/week-detail-panel";
+import { LearningPath } from "./components/learning-path";
+import { deriveLearningPathState } from "./learning-path-state";
 
 function firstName(value: string | null | undefined) {
   return value?.trim().split(/\s+/)[0] || "Coder";
@@ -35,16 +35,22 @@ export function CurriculumDashboard({ modules }: CurriculumDashboardProps) {
   const completedIds = useCompletedLessonIds();
   const { user } = useAuthSession();
   const reduceMotion = useReducedMotion();
+  const { maxUnlockedWeekOrder, loading: accessLoading } = useStudentAccess();
   const weeks = useMemo(() => modules.flatMap((module) => module.weeks), [modules]);
   const allLessons = useMemo(() => weeks.flatMap((week) => week.lessons), [weeks]);
+  const pathState = useMemo(
+    () => deriveLearningPathState(weeks, completedIds, maxUnlockedWeekOrder),
+    [completedIds, maxUnlockedWeekOrder, weeks],
+  );
 
   const actionableWeek =
-    weeks.find((week) => week.fccStatus !== "upcoming" && week.lessons.some((lesson) => !completedIds.includes(lesson.id))) ??
-    weeks.find((week) => week.fccStatus === "current") ??
+    pathState.currentWeek ??
+    pathState.weeks.findLast((item) => item.state !== "locked")?.week ??
     weeks[0];
-  const [selectedWeekId, setSelectedWeekId] = useState(actionableWeek?.id ?? weeks[0]?.id ?? "");
-  const selectedWeek = weeks.find((week) => week.id === selectedWeekId) ?? actionableWeek ?? weeks[0];
-  const continueLesson = actionableWeek?.lessons.find((lesson) => !completedIds.includes(lesson.id)) ?? actionableWeek?.lessons[0];
+  const continueLesson =
+    pathState.currentLesson ??
+    actionableWeek?.lessons.at(-1) ??
+    actionableWeek?.lessons[0];
 
   const completedCount = allLessons.filter((lesson) => completedIds.includes(lesson.id)).length;
   const completionPercent = allLessons.length ? Math.round((completedCount / allLessons.length) * 100) : 0;
@@ -77,7 +83,7 @@ export function CurriculumDashboard({ modules }: CurriculumDashboardProps) {
           <div className="dashboard-module-progress">
             <div><span>Basic HTML</span><strong>{completedCount}/{allLessons.length} ders</strong></div>
             <Progress value={completionPercent} aria-label="Basic HTML ilerlemesi" />
-            <small>%{completionPercent} tamamlandı</small>
+            <small>{accessLoading ? "Rota yükleniyor…" : `%${completionPercent} tamamlandı`}</small>
           </div>
         </section>
 
@@ -89,6 +95,7 @@ export function CurriculumDashboard({ modules }: CurriculumDashboardProps) {
               curriculumPercent={completionPercent}
               weekPercent={weekPercent}
               studentName={firstName(user?.displayName)}
+              reviewMode={!pathState.currentLesson}
             />
 
             <aside className="weekly-outcome-card" data-section="weekly-outcomes">
@@ -114,30 +121,7 @@ export function CurriculumDashboard({ modules }: CurriculumDashboardProps) {
           <article><LearningSticker icon={Rocket} label="İnşa et" tone="peach" /><div><strong>3. Kendi başına inşa et</strong><p>Mini build ile bilgiyi birleştir.</p></div></article>
         </section>
 
-        <section className="week-journey-section" data-section="week-journey">
-          <div className="section-heading-row">
-            <div>
-              <span className="surface-kicker">8 HAFTALIK ÖĞRENME ROTASI</span>
-              <h2>Basic HTML yolculuğun</h2>
-              <p>Her hafta FCC içeriğiyle eşleşir; görevlerin ve örneklerin ise tamamen özgündür.</p>
-            </div>
-            <div className="journey-note"><Sparkles /><span><strong>137 FCC adımı</strong><small>24 özgün Code Lab dersi</small></span></div>
-          </div>
-
-          <div className="week-journey-grid">
-            {weeks.map((week) => (
-              <WeekJourneyCard
-                key={week.id}
-                week={week}
-                completedLessons={week.lessons.filter((lesson) => completedIds.includes(lesson.id)).length}
-                selected={week.id === selectedWeek?.id}
-                onSelect={() => setSelectedWeekId(week.id)}
-              />
-            ))}
-          </div>
-
-          {selectedWeek ? <WeekDetailPanel week={selectedWeek} completedIds={completedIds} /> : null}
-        </section>
+        <LearningPath state={pathState} />
 
         <section className="dashboard-support-grid">
           <article className="support-card support-card-cloud">
