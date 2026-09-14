@@ -88,3 +88,25 @@ test("student UI avoids pressure mechanics", () => {
 
   assert.doesNotMatch(`${dashboard}\n${login}\n${learningPath}`, /\bXP\b|leaderboard|streak|confetti/i);
 });
+
+test("student presence is global and teacher monitoring is separate from lesson live state", () => {
+  const providers = read("src/app/providers.tsx");
+  const presence = read("src/features/presence/student-presence-bridge.tsx");
+  const teacher = read("src/features/teacher/teacher-dashboard.tsx");
+
+  assert.match(providers, /<StudentPresenceBridge/);
+  assert.match(presence, /collection|presence/);
+  assert.match(presence, /HEARTBEAT_MS/);
+  assert.match(teacher, /useStudentPresence/);
+});
+
+test("topic games are data driven and remain optional reinforcement", () => {
+  const games = read("src/features/games/data/basic-html-games.ts");
+  const week = read("src/features/curriculum/components/learning-path-week.tsx");
+  const player = read("src/features/games/components/game-player.tsx");
+
+  assert.match(games, /w1-tag-attribute-repair/);
+  assert.match(games, /w8-path-maze/);
+  assert.match(week, /<GameCard/);
+  assert.match(player, /Cevapları kontrol et/);
+});

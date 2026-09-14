@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { basicHtmlModule } from "./data/basic-html";
 import { CurriculumDashboard } from "./curriculum-dashboard";
+import { getGamesForWeek } from "@/features/games/data/basic-html-games";
 import { AuthProvider } from "@/features/auth/auth-provider";
 
 vi.mock("@/features/auth/session-controls", () => ({
@@ -57,7 +58,7 @@ describe("CurriculumDashboard", () => {
       return element as HTMLElement;
     });
 
-    expect(within(weekTwoLessons).getAllByRole("link")).toHaveLength(secondWeek.lessons.length);
+    expect(within(weekTwoLessons).getAllByRole("link")).toHaveLength(secondWeek.lessons.length + getGamesForWeek(secondWeek.id).length);
 
     await user.click(
       screen.getByRole("button", {

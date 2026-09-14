@@ -41,6 +41,25 @@ vi.mock("./teacher-api", () => ({
   updateStudent: vi.fn(async () => ({ ok: true })),
   resetStudentProgress: vi.fn(),
   deleteStudent: vi.fn(),
+  markStudentLessonComplete: vi.fn(async () => ({ ok: true })),
+}));
+
+
+vi.mock("./use-student-presence", () => ({
+  useStudentPresence: () => ({
+    presence: {
+      "student-1": { studentId: "student-1", online: true, currentPath: "/lesson/w1-robot-profile-debug", currentLessonId: "w1-robot-profile-debug", visibility: "visible", lastSeenMs: Date.now() },
+      "student-2": { studentId: "student-2", online: false, currentPath: "/", currentLessonId: null, visibility: "hidden", lastSeenMs: Date.now() - 120000 },
+    },
+    error: "",
+  }),
+}));
+
+vi.mock("./use-student-games", () => ({
+  useStudentGames: () => ({
+    items: [{ gameId: "w1-tag-attribute-repair", completed: true, attempts: 1, bestScore: 4, total: 4, updatedAtMs: Date.now() }],
+    error: "",
+  }),
 }));
 
 vi.mock("./use-live-sessions", () => ({
@@ -73,6 +92,10 @@ vi.mock("./use-student-progress", () => ({
       {
         lessonId: "w1-robot-profile-debug",
         completed: true,
+        currentStage: "mini",
+        practiceCompleted: true,
+        challengeCompleted: true,
+        miniCompleted: true,
         attempts: 1,
         lastPassedCount: 3,
         totalTests: 3,

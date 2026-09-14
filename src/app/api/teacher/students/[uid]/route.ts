@@ -21,11 +21,11 @@ function errorResponse(error: unknown) {
   return NextResponse.json({ error: message }, { status });
 }
 
-async function deleteProgress(uid: string) {
+async function deleteStudentSubcollection(uid: string, name: "progress" | "games") {
   const db = getAdminDb();
-  const progress = await db.collection("students").doc(uid).collection("progress").get();
+  const snapshot = await db.collection("students").doc(uid).collection(name).get();
   const chunks = [];
-  for (let index = 0; index < progress.docs.length; index += 400) chunks.push(progress.docs.slice(index, index + 400));
+  for (let index = 0; index < snapshot.docs.length; index += 400) chunks.push(snapshot.docs.slice(index, index + 400));
   for (const chunk of chunks) {
     const batch = db.batch();
     chunk.forEach((doc) => batch.delete(doc.ref));
@@ -86,9 +86,10 @@ export async function DELETE(request: Request, context: Context) {
       return NextResponse.json({ error: "Hedef hesap öğrenci hesabı değil." }, { status: 400 });
     }
 
-    await deleteProgress(uid);
+    await Promise.all([deleteStudentSubcollection(uid, "progress"), deleteStudentSubcollection(uid, "games")]);
     await Promise.all([
       db.collection("liveSessions").doc(uid).delete().catch(() => undefined),
+      db.collection("presence").doc(uid).delete().catch(() => undefined),
       db.collection("students").doc(uid).delete(),
       getAdminAuth().deleteUser(uid),
     ]);

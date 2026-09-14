@@ -45,10 +45,14 @@ import {
   listStudents,
   resetStudentProgress,
   updateStudent,
+  markStudentLessonComplete,
 } from "./teacher-api";
 import type { StudentRecord } from "./types";
 import { useLiveSessions } from "./use-live-sessions";
+import { useStudentPresence } from "./use-student-presence";
 import { useStudentProgress } from "./use-student-progress";
+import { useStudentGames } from "./use-student-games";
+import { basicHtmlGames } from "@/features/games/data/basic-html-games";
 import { TeacherLiveWorkspace } from "./components/teacher-live-workspace";
 import { WeekUnlockControl } from "./components/week-unlock-control";
 
@@ -83,8 +87,8 @@ function formatAgo(timestamp: number | null, now: number) {
   return `${Math.floor(hours / 24)} gün önce`;
 }
 
-function isOnline(timestamp: number | null, now: number) {
-  return Boolean(timestamp && now - timestamp < 45_000);
+function isOnline(timestamp: number | null, now: number, onlineFlag = true) {
+  return Boolean(onlineFlag && timestamp && now - timestamp < 45_000);
 }
 
 export function TeacherDashboard() {
@@ -102,6 +106,7 @@ export function TeacherDashboard() {
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const { sessions: liveSessions, error: liveError } = useLiveSessions();
+  const { presence, error: presenceError } = useStudentPresence();
   const selected = students.find((student) => student.id === selectedUid) ?? null;
   const editForm = selected
     ? editDraft?.studentId === selected.id
@@ -122,6 +127,7 @@ export function TeacherDashboard() {
   }, [selected]);
   const liveSession = selectedUid ? liveSessions[selectedUid] ?? null : null;
   const { items: progressItems, error: progressError } = useStudentProgress(selectedUid);
+  const { items: gameItems, error: gameError } = useStudentGames(selectedUid);
   const completedLessons = progressItems.filter((item) => item.completed).length;
 
   const applyStudents = useCallback((nextStudents: StudentRecord[]) => {
@@ -170,10 +176,15 @@ export function TeacherDashboard() {
     setError("");
   }, []);
 
-  const onlineCount = students.filter((student) => isOnline(liveSessions[student.id]?.updatedAtMs ?? null, now)).length;
+  const onlineCount = students.filter((student) => {
+    const item = presence[student.id];
+    return isOnline(item?.lastSeenMs ?? null, now, item?.online === true);
+  }).length;
   const activeCount = students.filter((student) => student.active).length;
-  const selectedOnline = isOnline(liveSession?.updatedAtMs ?? null, now);
-  const currentLessonTitle = liveSession?.lessonId ? getLessonById(liveSession.lessonId)?.title ?? liveSession.lessonId : "Henüz bir ders açık değil";
+  const selectedPresence = selectedUid ? presence[selectedUid] ?? null : null;
+  const selectedOnline = isOnline(selectedPresence?.lastSeenMs ?? null, now, selectedPresence?.online === true);
+  const currentLessonId = liveSession?.lessonId ?? selectedPresence?.currentLessonId ?? null;
+  const currentLessonTitle = currentLessonId ? getLessonById(currentLessonId)?.title ?? currentLessonId : "Henüz bir ders açık değil";
   const selectedProgressPercent = lessonCount ? Math.round((completedLessons / lessonCount) * 100) : 0;
 
   const visibleStudents = useMemo(() => {
@@ -181,11 +192,13 @@ export function TeacherDashboard() {
     return [...students]
       .filter((student) => !normalized || `${student.name} ${student.username}`.toLocaleLowerCase("tr").includes(normalized))
       .sort((a, b) => {
-        const onlineA = Number(isOnline(liveSessions[a.id]?.updatedAtMs ?? null, now));
-        const onlineB = Number(isOnline(liveSessions[b.id]?.updatedAtMs ?? null, now));
+        const presenceA = presence[a.id];
+        const presenceB = presence[b.id];
+        const onlineA = Number(isOnline(presenceA?.lastSeenMs ?? null, now, presenceA?.online === true));
+        const onlineB = Number(isOnline(presenceB?.lastSeenMs ?? null, now, presenceB?.online === true));
         return onlineB - onlineA || a.name.localeCompare(b.name, "tr");
       });
-  }, [liveSessions, now, query, students]);
+  }, [now, presence, query, students]);
 
   const submitCreate = async (event: FormEvent) => {
     event.preventDefault();
@@ -258,11 +271,24 @@ export function TeacherDashboard() {
     }
   };
 
+
+  const forceCompleteCurrentLesson = async () => {
+    if (!selected || !currentLessonId) return;
+    setBusy(true); setError(""); setMessage("");
+    try {
+      await markStudentLessonComplete(selected.id, currentLessonId);
+      setMessage("Aktif ders öğretmen tarafından tamamlandı olarak işaretlendi.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Ders tamamlanamadı.");
+    } finally { setBusy(false); }
+  };
+
   const summaryCards = [
     { label: "Toplam öğrenci", value: students.length, icon: Users, tone: "violet" as const },
     { label: "Şu an canlı", value: onlineCount, icon: Radio, tone: "mint" as const },
     { label: "Aktif hesap", value: activeCount, icon: UserCheck, tone: "sky" as const },
     { label: "Basic HTML dersi", value: lessonCount, icon: BookOpenCheck, tone: "peach" as const },
+    { label: "Konu oyunu", value: basicHtmlGames.length, icon: Eye, tone: "yellow" as const },
   ];
 
   return (
@@ -309,6 +335,8 @@ export function TeacherDashboard() {
           {error ? <p className="teacher-feedback is-error" role="alert">{error}</p> : null}
           {liveError ? <p className="teacher-feedback is-error" role="alert">{liveError}</p> : null}
           {progressError ? <p className="teacher-feedback is-error" role="alert">{progressError}</p> : null}
+          {presenceError ? <p className="teacher-feedback is-error" role="alert">{presenceError}</p> : null}
+          {gameError ? <p className="teacher-feedback is-error" role="alert">{gameError}</p> : null}
           {message ? <p className="teacher-feedback is-success"><CheckCircle2 /> {message}</p> : null}
         </div>
 
@@ -323,8 +351,10 @@ export function TeacherDashboard() {
               {!loading && visibleStudents.length === 0 ? <div className="teacher-empty-state"><Users /><strong>Sonuç bulunamadı.</strong><p>Aramayı temizle veya yeni bir öğrenci ekle.</p></div> : null}
               {visibleStudents.map((student) => {
                 const session = liveSessions[student.id];
-                const online = isOnline(session?.updatedAtMs ?? null, now);
-                const lessonTitle = session?.lessonId ? getLessonById(session.lessonId)?.title : null;
+                const studentPresence = presence[student.id];
+                const online = isOnline(studentPresence?.lastSeenMs ?? null, now, studentPresence?.online === true);
+                const activeLessonId = session?.lessonId ?? studentPresence?.currentLessonId ?? null;
+                const lessonTitle = activeLessonId ? getLessonById(activeLessonId)?.title : null;
                 return (
                   <button key={student.id} type="button" onClick={() => selectStudent(student.id)} className={selectedUid === student.id ? "teacher-roster-item is-selected" : "teacher-roster-item"}>
                     <span className="teacher-student-avatar">{student.name.slice(0, 1).toLocaleUpperCase("tr")}</span>
@@ -347,18 +377,19 @@ export function TeacherDashboard() {
                     </div>
                     <div className="teacher-live-statuses">
                       <Badge variant={selectedOnline ? "success" : "outline"}><CircleDot /> {selectedOnline ? "CANLI" : "ÇEVRİMDIŞI"}</Badge>
-                      <span><Clock3 /> {formatAgo(liveSession?.updatedAtMs ?? null, now)}</span>
+                      <span><Clock3 /> {formatAgo(selectedPresence?.lastSeenMs ?? liveSession?.updatedAtMs ?? null, now)}</span>
                     </div>
                   </div>
 
                   <div className="teacher-live-context">
                     <div><Code2 /><span><small>AKTİF DERS</small><strong>{currentLessonTitle}</strong></span></div>
-                    <div><Activity /><span><small>SON AKSİYON</small><strong>{liveSession?.lastAction || "Bekleniyor"}</strong></span></div>
+                    <div><Activity /><span><small>SON AKSİYON</small><strong>{liveSession?.lastAction || (selectedPresence?.currentPath === "/" ? "Dashboard'da" : selectedPresence?.currentPath || "Bekleniyor")}</strong></span></div>
                     <div><Eye /><span><small>AŞAMA</small><strong>{liveSession?.taskId ? stageLabels[liveSession.taskId] ?? liveSession.taskId : "—"}</strong></span></div>
                     <div className="teacher-live-score"><span><small>TESTLER</small><strong>{liveSession ? `${liveSession.passedCount}/${liveSession.totalTests}` : "—"}</strong></span></div>
                   </div>
 
                   <TeacherLiveWorkspace session={liveSession} studentName={selected.name} />
+                  {currentLessonId ? <div className="teacher-override-row"><span><strong>Ders geçişi takılırsa</strong><small>Öğrencinin açık dersini güvenli biçimde tamamlandı işaretle.</small></span><Button variant="outline" disabled={busy} onClick={() => void forceCompleteCurrentLesson()}><CheckCircle2 /> Dersi tamamlandı işaretle</Button></div> : null}
                 </section>
 
                 <div className="teacher-detail-grid">
@@ -377,9 +408,17 @@ export function TeacherDashboard() {
                     <div className="teacher-recent-progress">
                       <span className="surface-kicker">SON ÇALIŞMALAR</span>
                       {[...progressItems].sort((a, b) => (b.updatedAtMs ?? 0) - (a.updatedAtMs ?? 0)).slice(0, 5).map((item) => (
-                        <div key={item.lessonId}><span><strong>{getLessonById(item.lessonId)?.title ?? item.lessonId}</strong><small>{formatAgo(item.updatedAtMs, now)}</small></span><Badge variant={item.completed ? "success" : "outline"}>{item.completed ? "Tamam" : `${item.lastPassedCount}/${item.totalTests}`}</Badge></div>
+                        <div key={item.lessonId}><span><strong>{getLessonById(item.lessonId)?.title ?? item.lessonId}</strong><small>{item.currentStage} · {formatAgo(item.updatedAtMs, now)}</small></span><Badge variant={item.completed ? "success" : "outline"}>{item.completed ? "Tamam" : `${item.lastPassedCount}/${item.totalTests}`}</Badge></div>
                       ))}
                       {progressItems.length === 0 ? <p className="teacher-muted-copy">Henüz kayıtlı ders ilerlemesi yok.</p> : null}
+                    </div>
+                    <div className="teacher-recent-progress teacher-game-progress">
+                      <span className="surface-kicker">KONU OYUNLARI</span>
+                      {[...gameItems].sort((a, b) => (b.updatedAtMs ?? 0) - (a.updatedAtMs ?? 0)).slice(0, 4).map((item) => {
+                        const game = basicHtmlGames.find((candidate) => candidate.id === item.gameId);
+                        return <div key={item.gameId}><span><strong>{game?.title ?? item.gameId}</strong><small>{item.attempts} deneme · {formatAgo(item.updatedAtMs, now)}</small></span><Badge variant={item.completed ? "success" : "outline"}>{item.bestScore}/{item.total}</Badge></div>;
+                      })}
+                      {gameItems.length === 0 ? <p className="teacher-muted-copy">Henüz oyun oynanmamış.</p> : null}
                     </div>
                     <Button variant="outline" onClick={() => void resetProgress()} disabled={busy}><RefreshCcw /> İlerlemeyi sıfırla</Button>
                   </section>

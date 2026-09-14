@@ -84,3 +84,19 @@ Bu upgrade yeni canlı-preview alanları eklediği için mevcut projende rules d
 ```bash
 npx firebase-tools deploy --only firestore:rules --project urtimur-code-lab
 ```
+
+## Presence, aşamalı ilerleme ve konu oyunları
+
+Bu sürüm üç yeni Firestore akışı kullanır:
+
+- `presence/{uid}`: öğrenci dashboard veya ders ekranındayken çevrim içi durumu
+- `students/{uid}/progress/{lessonId}`: Practice → Challenge → Mini Build aşama ilerlemesi
+- `students/{uid}/games/{gameId}`: konu oyunlarının deneme ve tamamlanma bilgisi
+
+Upgrade sonrasında rules dosyasını yeniden yayınla:
+
+```bash
+npx firebase-tools deploy --only firestore:rules --project urtimur-code-lab
+```
+
+Öğretmen panelindeki **Dersi tamamlandı işaretle** butonu, öğrenci tarafındaki bir senkron problemi sırasında açık dersi güvenli şekilde tamamlamak için kurtarma aksiyonudur.

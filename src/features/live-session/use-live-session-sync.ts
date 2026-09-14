@@ -22,6 +22,7 @@ type LiveSyncInput = {
   activePane: LiveActivePane;
   previewPreset: PreviewPreset;
   previewScrollY: number;
+  totalTests?: number;
   enabled?: boolean;
 };
 
@@ -43,6 +44,7 @@ export function useLiveSessionSync({
   activePane,
   previewPreset,
   previewScrollY,
+  totalTests,
   enabled = true,
 }: LiveSyncInput) {
   const { user, role, firebaseReady } = useAuthSession();
@@ -83,7 +85,7 @@ export function useLiveSessionSync({
             taskId: snapshot.taskId,
             code: snapshot.source,
             passedCount: snapshot.results.filter((result) => result.passed).length,
-            totalTests: lesson.tests.length,
+            totalTests: totalTests ?? lesson.tests.length,
             status,
             lastAction,
             activePane: snapshot.activePane,
@@ -98,7 +100,7 @@ export function useLiveSessionSync({
         // Live monitoring is best-effort and must never interrupt the student's editor.
       }
     },
-    [enabled, firebaseReady, lesson.id, lesson.tests.length, role, user, week.id],
+    [enabled, firebaseReady, lesson.id, lesson.tests.length, role, totalTests, user, week.id],
   );
 
   useEffect(() => {

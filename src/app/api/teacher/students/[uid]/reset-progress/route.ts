@@ -15,12 +15,13 @@ export async function POST(request: Request, context: Context) {
     }
     const db = getAdminDb();
     const studentRef = db.collection("students").doc(uid);
-    const snapshot = await studentRef.collection("progress").get();
-
-    for (let index = 0; index < snapshot.docs.length; index += 400) {
-      const batch = db.batch();
-      snapshot.docs.slice(index, index + 400).forEach((document) => batch.delete(document.ref));
-      await batch.commit();
+    for (const collectionName of ["progress", "games"] as const) {
+      const snapshot = await studentRef.collection(collectionName).get();
+      for (let index = 0; index < snapshot.docs.length; index += 400) {
+        const batch = db.batch();
+        snapshot.docs.slice(index, index + 400).forEach((document) => batch.delete(document.ref));
+        await batch.commit();
+      }
     }
 
     const cleanup = db.batch();

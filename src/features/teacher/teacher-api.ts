@@ -49,3 +49,7 @@ export function deleteStudent(uid: string) {
 export function resetStudentProgress(uid: string) {
   return teacherFetch<{ ok: true }>(`/api/teacher/students/${uid}/reset-progress`, { method: "POST" });
 }
+
+export function markStudentLessonComplete(uid: string, lessonId: string) {
+  return teacherFetch<{ ok: true }>(`/api/teacher/students/${uid}/progress/${lessonId}/complete`, { method: "POST" });
+}

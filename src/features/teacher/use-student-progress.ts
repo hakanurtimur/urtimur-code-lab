@@ -30,7 +30,11 @@ export function useStudentProgress(studentUid: string | null) {
           return {
             lessonId: document.id,
             completed: data.completed === true,
-            attempts: typeof data.attempts === "number" ? data.attempts : 0,
+            currentStage: data.completed === true || data.currentStage === "mini" ? "mini" : data.currentStage === "challenge" ? "challenge" : "practice",
+            practiceCompleted: data.practiceCompleted === true,
+            challengeCompleted: data.challengeCompleted === true,
+            miniCompleted: data.miniCompleted === true || data.completed === true,
+            attempts: typeof data.attempts === "number" ? data.attempts : [data.practiceAttempts, data.challengeAttempts, data.miniAttempts].reduce((sum: number, value) => sum + (typeof value === "number" ? value : 0), 0),
             lastPassedCount: typeof data.lastPassedCount === "number" ? data.lastPassedCount : 0,
             totalTests: typeof data.totalTests === "number" ? data.totalTests : 0,
             updatedAtMs: data.updatedAt instanceof Timestamp ? data.updatedAt.toMillis() : null,

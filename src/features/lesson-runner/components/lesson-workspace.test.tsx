@@ -49,13 +49,16 @@ describe("LessonWorkspace", () => {
       target: { value: validSource },
     });
     await user.click(screen.getByRole("button", { name: /kodumu kontrol et/i }));
+    await user.click(screen.getByRole("button", { name: /challenge'a geç/i }));
+    await user.click(screen.getByRole("button", { name: /kodumu kontrol et/i }));
+    await user.click(screen.getByRole("button", { name: /mini build'a geç/i }));
+    await user.click(screen.getByRole("button", { name: /kodumu kontrol et/i }));
 
     expect(screen.getByRole("status")).toHaveTextContent("3 / 3 test geçti");
     const completionCard = container.querySelector(".lesson-completion-card");
     expect(completionCard).not.toBeNull();
     expect(within(completionCard as HTMLElement).getByText(new RegExp(week.lessons[1].title, "i"))).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: /tamamla ve sıradakine geç/i }));
-
-    await waitFor(() => expect(push).toHaveBeenCalledWith(`/lesson/${week.lessons[1].id}`));
+    const nextLessonLink = screen.getByRole("link", { name: /sıradaki derse geç/i });
+    expect(nextLessonLink).toHaveAttribute("href", `/lesson/${week.lessons[1].id}`);
   });
 });

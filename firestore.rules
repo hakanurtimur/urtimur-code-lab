@@ -35,10 +35,59 @@ service cloud.firestore {
             'lastPassedCount',
             'totalTests',
             'lastAttemptAt',
+            'updatedAt',
+            'currentStage',
+            'practiceCompleted',
+            'challengeCompleted',
+            'miniCompleted',
+            'practiceAttempts',
+            'challengeAttempts',
+            'miniAttempts'
+          ]);
+        allow delete: if false;
+      }
+
+      match /games/{gameId} {
+        allow read: if isTeacher() || isActiveStudent(uid);
+        allow create, update: if isActiveStudent(uid)
+          && request.resource.data.gameId == gameId
+          && request.resource.data.completed is bool
+          && request.resource.data.attempts is number
+          && request.resource.data.bestScore is number
+          && request.resource.data.total is number
+          && request.resource.data.lastScore is number
+          && request.resource.data.keys().hasOnly([
+            'gameId',
+            'completed',
+            'attempts',
+            'bestScore',
+            'total',
+            'lastScore',
+            'lastAttemptAt',
+            'completedAt',
             'updatedAt'
           ]);
         allow delete: if false;
       }
+    }
+
+    match /presence/{uid} {
+      allow read: if isTeacher() || isActiveStudent(uid);
+      allow create, update: if isActiveStudent(uid)
+        && request.resource.data.studentId == uid
+        && request.resource.data.online is bool
+        && request.resource.data.currentPath is string
+        && (request.resource.data.currentLessonId == null || request.resource.data.currentLessonId is string)
+        && request.resource.data.visibility in ['visible', 'hidden']
+        && request.resource.data.keys().hasOnly([
+          'studentId',
+          'online',
+          'currentPath',
+          'currentLessonId',
+          'visibility',
+          'lastSeen'
+        ]);
+      allow delete: if false;
     }
 
     match /liveSessions/{uid} {

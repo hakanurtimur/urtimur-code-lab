@@ -13,6 +13,10 @@ export type StudentRecord = {
 export type StudentProgressItem = {
   lessonId: string;
   completed: boolean;
+  currentStage: "practice" | "challenge" | "mini";
+  practiceCompleted: boolean;
+  challengeCompleted: boolean;
+  miniCompleted: boolean;
   attempts: number;
   lastPassedCount: number;
   totalTests: number;

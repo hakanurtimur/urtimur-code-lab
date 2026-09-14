@@ -247,3 +247,10 @@ src/features/teacher/components/
 ```bash
 npm run test:design
 ```
+
+## Presence + stage progression + topic games
+
+- Student presence now starts at the app root, so learners appear online on the dashboard as well as inside lessons.
+- Lessons progress through **Practice → Challenge → Mini Build**; Mini Build completion unlocks the lesson handoff.
+- Teacher Console includes a safe current-lesson completion override.
+- Basic HTML includes eight short, topic-aligned reinforcement games. Games are optional, saved to Firestore, and never block the learner's lesson route.

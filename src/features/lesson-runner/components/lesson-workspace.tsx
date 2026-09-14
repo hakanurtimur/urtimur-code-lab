@@ -27,6 +27,7 @@ import { deriveLearningPathState } from "@/features/curriculum/learning-path-sta
 import { getLessonCompletionHandoff, getLessonNavigation } from "@/features/curriculum/lesson-navigation";
 import { useCompletedLessonIds } from "@/features/progress/use-completed-lesson-ids";
 import { useLessonProgress } from "@/features/progress/use-lesson-progress";
+import { canOpenStage, stageTests, type LessonStageKey } from "@/features/progress/stage-progress";
 import { useStudentAccess } from "@/features/progress/use-student-access";
 import { useLiveSessionSync } from "@/features/live-session/use-live-session-sync";
 import { StudentSessionControls } from "@/features/auth/session-controls";
@@ -55,8 +56,6 @@ type LessonWorkspaceProps = {
   week: CurriculumWeek;
 };
 
-type LessonStageKey = "practice" | "challenge" | "mini";
-
 const stageConfig = {
   practice: { label: "Practice", icon: Lightbulb, tone: "violet" as const },
   challenge: { label: "Challenge", icon: Target, tone: "sky" as const },
@@ -76,7 +75,7 @@ export function LessonWorkspace({ lesson, week }: LessonWorkspaceProps) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [completing, setCompleting] = useState(false);
   const [completionError, setCompletionError] = useState("");
-  const { completed, completeLesson, recordAttempt } = useLessonProgress(lesson.id);
+  const { completed, completeLesson, recordStageAttempt, stageProgress } = useLessonProgress(lesson.id);
   const completedIds = useCompletedLessonIds();
   const { maxUnlockedWeekOrder, loading: accessLoading } = useStudentAccess();
   const reduceMotion = useReducedMotion();
@@ -92,13 +91,14 @@ export function LessonWorkspace({ lesson, week }: LessonWorkspaceProps) {
   );
   const weekPath = pathState.weeks.find((item) => item.week.id === week.id);
   const canAccessLesson = !accessLoading && week.order <= maxUnlockedWeekOrder;
+  const currentTests = useMemo(() => stageTests(lesson.tests, activeStage), [activeStage, lesson.tests]);
   const allPassed = useMemo(
     () => results.length > 0 && results.every((result) => result.passed),
     [results],
   );
   const passedCount = results.filter((result) => result.passed).length;
-  const testPercent = lesson.tests.length
-    ? Math.round((passedCount / lesson.tests.length) * 100)
+  const testPercent = currentTests.length
+    ? Math.round((passedCount / currentTests.length) * 100)
     : 0;
   const currentStage = activeStage === "practice"
     ? lesson.practice
@@ -115,17 +115,36 @@ export function LessonWorkspace({ lesson, week }: LessonWorkspaceProps) {
     activePane,
     previewPreset,
     previewScrollY,
+    totalTests: currentTests.length,
     enabled: canAccessLesson,
   });
 
   const runTests = () => {
-    const nextResults = runHtmlTests(source, lesson.tests);
+    const nextResults = runHtmlTests(source, currentTests);
     const nextPassedCount = nextResults.filter((result) => result.passed).length;
+    const passed = nextResults.length > 0 && nextResults.every((result) => result.passed);
     setResults(nextResults);
     setActivePane("result");
-    void recordAttempt({ passedTests: nextPassedCount, totalTests: nextResults.length });
+    void recordStageAttempt(
+      activeStage,
+      { passedTests: nextPassedCount, totalTests: nextResults.length },
+      passed,
+    );
     void markTesting(nextResults);
   };
+
+  const moveToStage = (stage: LessonStageKey) => {
+    if (!canOpenStage(stageProgress, stage)) return;
+    setActiveStage(stage);
+    setResults([]);
+    setActivePane("code");
+  };
+
+  const nextStage: LessonStageKey | null = activeStage === "practice"
+    ? "challenge"
+    : activeStage === "challenge"
+      ? "mini"
+      : null;
 
   const resetLesson = () => {
     setSource(lesson.starterCode);
@@ -245,12 +264,12 @@ export function LessonWorkspace({ lesson, week }: LessonWorkspaceProps) {
               <div><span className="surface-kicker">FCC CHECKPOINT</span><p>{lesson.fccCheckpoint}</p></div>
             </section>
 
-            <Tabs value={activeStage} onValueChange={(value) => setActiveStage(value as LessonStageKey)} className="mission-stage-tabs">
+            <Tabs value={activeStage} onValueChange={(value) => moveToStage(value as LessonStageKey)} className="mission-stage-tabs">
               <TabsList className="mission-stage-switcher">
                 {(Object.entries(stageConfig) as Array<[LessonStageKey, typeof stageConfig.practice]>).map(([key, config]) => (
-                  <TabsTrigger key={key} value={key} className="mission-stage-trigger">
+                  <TabsTrigger key={key} value={key} className="mission-stage-trigger" disabled={!canOpenStage(stageProgress, key)}>
                     {activeStage === key && !reduceMotion ? <motion.span layoutId="active-stage-pill" className="mission-stage-active-pill" /> : null}
-                    <span>{config.label}</span>
+                    <span>{config.label}{(key === "practice" && stageProgress.practiceCompleted) || (key === "challenge" && stageProgress.challengeCompleted) || (key === "mini" && stageProgress.miniCompleted) ? " ✓" : ""}</span>
                   </TabsTrigger>
                 ))}
               </TabsList>
@@ -347,7 +366,7 @@ export function LessonWorkspace({ lesson, week }: LessonWorkspaceProps) {
             <div className="test-drawer-heading">
               <div><span className="surface-kicker">GÖREV KONTROLLERİ</span><h2>{results.length ? `${passedCount} / ${results.length} test geçti` : "Hazır olduğunda kontrol et"}</h2></div>
               <CircularProgress value={results.length ? testPercent : 0} size={62} strokeWidth={6} tone={allPassed ? "mint" : "violet"} label={`Testlerin yüzde ${results.length ? testPercent : 0} kadarı geçti`}>
-                <strong>{results.length ? `${passedCount}/${results.length}` : `0/${lesson.tests.length}`}</strong>
+                <strong>{results.length ? `${passedCount}/${results.length}` : `0/${currentTests.length}`}</strong>
               </CircularProgress>
             </div>
             <Progress value={results.length ? testPercent : 0} />
@@ -356,8 +375,25 @@ export function LessonWorkspace({ lesson, week }: LessonWorkspaceProps) {
               <div className="tests-empty-state"><Eye /><div><strong>Önce kendi çözümünü dene.</strong><p>“Kodumu kontrol et” dediğinde her gereksinimi tek tek inceleyeceğiz.</p></div></div>
             )}
 
-            <AnimatePresence mode="wait">
-              {allPassed ? (
+            <AnimatePresence initial={false}>
+              {allPassed && activeStage !== "mini" && nextStage ? (
+                <motion.div
+                  key={`stage-${activeStage}`}
+                  className="stage-success-card"
+                  initial={reduceMotion ? false : { opacity: 0, y: 12, scale: 0.98 }}
+                  animate={reduceMotion ? undefined : { opacity: 1, y: 0, scale: 1 }}
+                >
+                  <LearningSticker icon={CheckCircle2} label="Aşama tamam" tone="mint" size="md" />
+                  <div>
+                    <span className="surface-kicker">AŞAMA TAMAM</span>
+                    <strong>{stageConfig[activeStage].label} hazır.</strong>
+                    <p>Bir sonraki aşamada yardım biraz daha azalacak.</p>
+                  </div>
+                  <Button onClick={() => moveToStage(nextStage)}>
+                    {stageConfig[nextStage].label}&apos;a geç
+                  </Button>
+                </motion.div>
+              ) : allPassed && activeStage === "mini" ? (
                 <LessonCompletionCard
                   key="completion"
                   lesson={lesson}

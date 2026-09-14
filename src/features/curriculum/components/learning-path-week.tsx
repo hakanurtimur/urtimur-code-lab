@@ -14,6 +14,8 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import type { LearningPathWeekState } from "../learning-path-state";
 import { LearningPathLesson } from "./learning-path-lesson";
+import { GameCard } from "@/features/games/components/game-card";
+import { getGamesForWeek } from "@/features/games/data/basic-html-games";
 
 type LearningPathWeekProps = {
   item: LearningPathWeekState;
@@ -35,6 +37,7 @@ export function LearningPathWeek({
   const { week, state, completedLessons, percent } = item;
   const tone = toneByWeek[(week.order - 1) % toneByWeek.length];
   const StatusIcon = state === "completed" ? Check : state === "current" ? Radio : state === "locked" ? LockKeyhole : Route;
+  const games = getGamesForWeek(week.id);
 
   return (
     <motion.section
@@ -100,16 +103,23 @@ export function LearningPathWeek({
                   <div><strong>Bu hafta henüz kilitli.</strong><p>Öğretmenin açtığında dersler burada görünecek.</p></div>
                 </div>
               ) : (
-                <div className="learning-path-lessons-list">
-                  {item.lessons.map((lessonItem, index) => (
-                    <LearningPathLesson
-                      key={lessonItem.lesson.id}
-                      item={lessonItem}
-                      index={index}
-                      reduceMotion={reduceMotion}
-                    />
-                  ))}
-                </div>
+                <>
+                  {games.length ? (
+                    <div className="learning-path-games">
+                      {games.map((game) => <GameCard key={game.id} game={game} reduceMotion={reduceMotion} />)}
+                    </div>
+                  ) : null}
+                  <div className="learning-path-lessons-list">
+                    {item.lessons.map((lessonItem, index) => (
+                      <LearningPathLesson
+                        key={lessonItem.lesson.id}
+                        item={lessonItem}
+                        index={index}
+                        reduceMotion={reduceMotion}
+                      />
+                    ))}
+                  </div>
+                </>
               )}
             </div>
           </motion.div>
