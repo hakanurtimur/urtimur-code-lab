@@ -21,6 +21,7 @@ import { LearningSticker } from "@/components/learning-sticker";
 import { Progress } from "@/components/ui/progress";
 import { ContinueLearningCard } from "./components/continue-learning-card";
 import { LearningPath } from "./components/learning-path";
+import { LiveClassBanner } from "@/features/live-class/components/live-class-banner";
 import { deriveLearningPathState } from "./learning-path-state";
 
 function firstName(value: string | null | undefined) {
@@ -71,6 +72,8 @@ export function CurriculumDashboard({ modules }: CurriculumDashboardProps) {
       </header>
 
       <div className="student-dashboard-shell">
+        <LiveClassBanner />
+
         <section className="dashboard-welcome-row">
           <motion.div
             initial={reduceMotion ? false : { opacity: 0, y: 8 }}

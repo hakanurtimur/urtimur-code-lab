@@ -29,6 +29,7 @@ type PreviewViewportProps = {
   scrollY?: number;
   onScrollChange?: (scrollY: number) => void;
   interactive?: boolean;
+  sandbox?: string;
   className?: string;
 };
 
@@ -50,6 +51,7 @@ export function PreviewViewport({
   scrollY = 0,
   onScrollChange,
   interactive = true,
+  sandbox = "allow-same-origin",
   className,
 }: PreviewViewportProps) {
   const [availableSize, setAvailableSize] = useState({ width: 0, height: 0 });
@@ -159,7 +161,7 @@ export function PreviewViewport({
             ref={iframeRef}
             title={title}
             srcDoc={source}
-            sandbox="allow-same-origin"
+            sandbox={sandbox}
             className="preview-frame"
             onLoad={bindFrameScroll}
             tabIndex={interactive ? 0 : -1}

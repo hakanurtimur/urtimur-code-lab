@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   FormEvent,
   type SetStateAction,
@@ -305,9 +306,14 @@ export function TeacherDashboard() {
             <h1>Öğrencinin kodunu, yazarken gör.</h1>
             <p>Hesapları tek panelden yönet; öğrencinin kodunu, canlı browser sonucunu, testlerini ve açık rotasını gerçek zamanlı izle.</p>
           </div>
-          <Button size="lg" onClick={() => setShowCreate((value) => !value)}>
-            {showCreate ? <RefreshCcw /> : <UserPlus />}{showCreate ? "Formu kapat" : "Öğrenci ekle"}
-          </Button>
+          <div className="teacher-hero-actions">
+            <Button asChild size="lg" variant="outline" className="teacher-live-class-launcher">
+              <Link href="/teacher/live-class"><Radio /> Canlı Ders Stüdyosu</Link>
+            </Button>
+            <Button size="lg" onClick={() => setShowCreate((value) => !value)}>
+              {showCreate ? <RefreshCcw /> : <UserPlus />}{showCreate ? "Formu kapat" : "Öğrenci ekle"}
+            </Button>
+          </div>
         </section>
 
         <section className="teacher-summary-grid" aria-label="Sınıf özeti">

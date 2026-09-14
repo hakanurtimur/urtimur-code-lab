@@ -121,6 +121,37 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    match /liveClass/{documentId} {
+      allow read: if isTeacher() || isActiveStudent(request.auth.uid);
+      allow create, update: if isTeacher();
+      allow delete: if false;
+    }
+
+    match /liveClasses/{sessionId} {
+      allow read: if isTeacher() || isActiveStudent(request.auth.uid);
+      allow create, update: if isTeacher();
+      allow delete: if false;
+
+      match /private/{documentId} {
+        allow read, create, update: if isTeacher();
+        allow delete: if false;
+      }
+
+      match /viewers/{studentUid} {
+        allow read: if isTeacher() || isActiveStudent(studentUid);
+        allow create, update: if isActiveStudent(studentUid)
+          && request.resource.data.studentId == studentUid
+          && request.resource.data.online is bool
+          && request.resource.data.keys().hasOnly([
+            'studentId',
+            'joinedAt',
+            'lastSeen',
+            'online'
+          ]);
+        allow delete: if false;
+      }
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

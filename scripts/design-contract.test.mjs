@@ -75,7 +75,8 @@ test("preview keeps a visible caret and real synchronized device presets", () =>
   assert.match(viewport, /desktop: \{ label: "Desktop", width: 1280, height: 800/);
   assert.match(viewport, /tablet: \{ label: "Tablet", width: 768, height: 1024/);
   assert.match(viewport, /mobile: \{ label: "Mobile", width: 390, height: 844/);
-  assert.match(viewport, /sandbox="allow-same-origin"/);
+  assert.match(viewport, /sandbox\s*=\s*"allow-same-origin"/);
+  assert.match(viewport, /sandbox=\{sandbox\}/);
   assert.match(sync, /previewPreset/);
   assert.match(sync, /previewScrollY/);
   assert.match(editor, /ariaLabel = "HTML kod editörü"/);
